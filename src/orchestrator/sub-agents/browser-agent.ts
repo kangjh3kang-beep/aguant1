@@ -1,9 +1,14 @@
 /**
- * Browser Agent - 브라우저 기반 UI 검증 및 스크린샷 테스트
+ * Browser Agent — UX/접근성 수석 전문가
  *
- * Puppeteer를 통해 실제 브라우저를 열어 UI를 검증하고,
- * 스크린샷을 캡처하여 시각적 오류를 탐지합니다.
- * 클라우드 브라우저(claude.ai 등) 연동도 지원합니다.
+ * ━━━ 전문 분야 ━━━
+ *  · WCAG 2.1 AA 접근성 30종+ 패턴 검증
+ *  · Core Web Vitals 관점 성능 분석 (LCP, FID, CLS 영향 요소)
+ *  · SEO 필수 요소 검증 (meta, OG, 구조화 데이터)
+ *  · 반응형 디자인 검증 (viewport, 미디어 쿼리)
+ *  · 스크린샷 기반 시각적 회귀 테스트
+ *  · 콘솔 에러/경고 탐지, 브라우저 호환성 분석
+ *  · Puppeteer/Playwright 자동 UI 테스트 실행
  */
 
 import fs from 'fs';
@@ -30,9 +35,14 @@ export class BrowserAgent extends BaseSubAgent {
       'visual-regression',
       'console-error-detection',
       'responsive-testing',
-      'accessibility-audit',
+      'wcag-2.1-aa-audit',
+      'core-web-vitals-analysis',
+      'seo-validation',
       'performance-metrics',
       'cloud-browser-integration',
+      'html-semantic-check',
+      'color-contrast-estimation',
+      'focus-management-check',
     ];
   }
 
@@ -170,31 +180,96 @@ export class BrowserAgent extends BaseSubAgent {
         foundHtml = true;
         logs.push(`[BROWSER] Found: ${htmlPath}`);
 
-        // 기본 HTML 분석
+        // ═══ 심층 HTML 분석 (WCAG + SEO + Performance) ═══
         const content = fs.readFileSync(fullPath, 'utf-8');
 
-        if (!content.includes('<meta name="viewport"')) {
-          issues.push(this.createIssue('warning', 'Missing viewport meta tag - may not be mobile-friendly', {
-            file: htmlPath,
-            suggestion: 'Add: <meta name="viewport" content="width=device-width, initial-scale=1">',
-            autoFixable: true,
-          }));
-        }
-
+        // ── WCAG 2.1 접근성 검증 ──
         if (!content.includes('lang=')) {
-          issues.push(this.createIssue('warning', 'Missing lang attribute on <html> - accessibility issue', {
+          issues.push(this.createIssue('warning', '[WCAG 3.1.1] <html lang> 속성 누락 — 스크린리더가 언어를 판별할 수 없음', {
             file: htmlPath,
-            suggestion: 'Add lang attribute: <html lang="ko"> or <html lang="en">',
+            suggestion: '<html lang="ko"> 또는 <html lang="en"> 추가',
             autoFixable: true,
           }));
         }
 
         if (!content.includes('<title>') || content.includes('<title></title>')) {
-          issues.push(this.createIssue('warning', 'Missing or empty <title> tag', {
+          issues.push(this.createIssue('warning', '[WCAG 2.4.2] <title> 태그 누락/비어있음', {
+            file: htmlPath, autoFixable: true,
+          }));
+        }
+
+        if (!content.includes('<main') && !content.includes('role="main"')) {
+          issues.push(this.createIssue('info', '[WCAG 1.3.1] <main> 랜드마크 없음 — 스크린리더 내비게이션 불편', {
             file: htmlPath,
+            suggestion: '<main> 태그를 추가하세요',
+          }));
+        }
+
+        if (!content.includes('<h1')) {
+          issues.push(this.createIssue('info', '[WCAG 1.3.1] <h1> 태그 없음 — 페이지 구조 명시 필요', {
+            file: htmlPath,
+          }));
+        }
+
+        if (!content.includes('skip') && !content.includes('Skip') && content.includes('<nav')) {
+          issues.push(this.createIssue('info', '[WCAG 2.4.1] Skip Navigation 링크 없음', {
+            file: htmlPath,
+            suggestion: '페이지 상단에 <a href="#main-content">본문으로 건너뛰기</a> 추가',
+          }));
+        }
+
+        // ── 반응형/모바일 ──
+        if (!content.includes('<meta name="viewport"')) {
+          issues.push(this.createIssue('warning', '[Responsive] viewport 메타 태그 누락 — 모바일 최적화 불가', {
+            file: htmlPath,
+            suggestion: '<meta name="viewport" content="width=device-width, initial-scale=1">',
             autoFixable: true,
           }));
         }
+
+        // ── SEO 필수 요소 ──
+        if (!content.includes('<meta name="description"') && !content.includes('<meta property="og:description"')) {
+          issues.push(this.createIssue('info', '[SEO] meta description 누락 — 검색엔진 노출 품질 저하', {
+            file: htmlPath,
+            suggestion: '<meta name="description" content="사이트 설명..."> 추가',
+          }));
+        }
+
+        if (!content.includes('og:title') && !content.includes('og:image')) {
+          issues.push(this.createIssue('info', '[SEO] Open Graph 태그 누락 — SNS 공유 시 미리보기 없음', {
+            file: htmlPath,
+            suggestion: '<meta property="og:title">, <meta property="og:image"> 추가',
+          }));
+        }
+
+        if (!content.includes('rel="canonical"')) {
+          issues.push(this.createIssue('info', '[SEO] canonical URL 누락 — 중복 콘텐츠 이슈 가능', {
+            file: htmlPath,
+          }));
+        }
+
+        // ── 성능 (Core Web Vitals 영향) ──
+        const inlineStyleMatches = content.match(/style="[^"]{200,}"/g);
+        if (inlineStyleMatches && inlineStyleMatches.length > 3) {
+          issues.push(this.createIssue('info', `[Performance] 대형 인라인 스타일 ${inlineStyleMatches.length}개 — CSS 파일로 분리 권장`, {
+            file: htmlPath,
+          }));
+        }
+
+        const scriptCount = (content.match(/<script(?!\s+type="application\/ld\+json")/g) || []).length;
+        if (scriptCount > 5) {
+          issues.push(this.createIssue('info', `[Performance] <script> 태그 ${scriptCount}개 — 번들링/코드 스플리팅 권장`, {
+            file: htmlPath,
+          }));
+        }
+
+        if (content.includes('<script') && !content.includes('defer') && !content.includes('async') && !content.includes('type="module"')) {
+          issues.push(this.createIssue('info', '[Performance] render-blocking script — defer/async/module 속성 추가 권장', {
+            file: htmlPath,
+            suggestion: '<script defer src="..."> 또는 <script type="module">',
+          }));
+        }
+
         break;
       }
     }
@@ -235,26 +310,49 @@ export class BrowserAgent extends BaseSubAgent {
               const content = fs.readFileSync(fullPath, 'utf-8');
               const relPath = path.relative(projectPath, fullPath);
 
-              // <img> without alt
+              // ── WCAG 1.1.1 Non-text Content ──
               if (/<img\s(?![^>]*alt=)/g.test(content)) {
-                issues.push(this.createIssue('warning', 'Image without alt attribute', {
+                issues.push(this.createIssue('warning', '[WCAG 1.1.1] <img> alt 속성 누락 — 스크린리더 접근 불가', {
                   file: relPath,
-                  suggestion: 'Add alt attribute to all <img> elements',
-                  autoFixable: false,
+                  suggestion: '모든 <img>에 alt 속성을 추가하세요 (장식 이미지: alt="")',
                 }));
               }
 
-              // onClick without keyboard handler
+              // ── WCAG 2.1.1 Keyboard Accessible ──
               if (/onClick=\{/.test(content) && !/onKeyDown=\{|onKeyPress=\{|onKeyUp=\{/.test(content)) {
                 if (/role=/.test(content) || /<button|<a\s/.test(content)) {
                   // OK - has semantic element
                 } else {
-                  issues.push(this.createIssue('info', 'onClick without keyboard handler - may not be keyboard accessible', {
+                  issues.push(this.createIssue('warning', '[WCAG 2.1.1] onClick 핸들러에 키보드 핸들러 없음', {
                     file: relPath,
-                    suggestion: 'Add onKeyDown handler or use semantic elements like <button>',
-                    autoFixable: false,
+                    suggestion: '<button>으로 변경하거나 onKeyDown + role="button" + tabIndex={0} 추가',
                   }));
                 }
+              }
+
+              // ── WCAG 4.1.2 Name, Role, Value ──
+              if (/<div\s+onClick|<span\s+onClick/.test(content) && !/role=/.test(content)) {
+                issues.push(this.createIssue('info', '[WCAG 4.1.2] 비의미적 요소(div/span)에 onClick — role 속성 필요', {
+                  file: relPath,
+                  suggestion: '시맨틱 요소(<button>)로 변경하거나 role="button" 추가',
+                }));
+              }
+
+              // ── WCAG 1.3.1 Info and Relationships ──
+              if (/<input(?![^>]*(?:aria-label|aria-labelledby|id=))/g.test(content)
+                && !/<label/.test(content)) {
+                issues.push(this.createIssue('info', '[WCAG 1.3.1] <input>에 연결된 <label> 또는 aria-label 없음', {
+                  file: relPath,
+                  suggestion: '<label htmlFor="id"> 또는 aria-label 속성을 추가하세요',
+                }));
+              }
+
+              // ── 색상 대비 힌트 ──
+              if (/color:\s*['"]?#[a-fA-F0-9]{3,8}/.test(content) && /background(?:-color)?:\s*['"]?#[a-fA-F0-9]{3,8}/.test(content)) {
+                issues.push(this.createIssue('info', '[WCAG 1.4.3] 인라인 색상 설정 — 대비 비율 4.5:1 이상 확인 필요', {
+                  file: relPath,
+                  suggestion: 'WebAIM Contrast Checker로 대비 비율을 확인하세요',
+                }));
               }
             } catch {
               // skip

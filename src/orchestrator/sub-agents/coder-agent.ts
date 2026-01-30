@@ -1,8 +1,14 @@
 /**
- * Coder Agent - AI 자율 코드 생성 및 파일 관리
+ * Coder Agent — 10x 시니어 풀스택 개발자
  *
- * AI 프로바이더(Claude/OpenAI/Google)를 통해 자율적으로 코드를 생성하고,
- * 프로젝트에 파일을 작성합니다. 환경변수에서 API 키를 로드합니다.
+ * ━━━ 전문 분야 ━━━
+ *  · AI 기반 자율 코드 생성 (Claude / OpenAI / Google Gemini)
+ *  · Clean Code, SOLID 원칙, Design Patterns 마스터
+ *  · TypeScript/JavaScript 고급 타입 시스템 전문가
+ *  · 성능 최적화 (메모리, CPU, 번들 크기, 알고리즘 복잡도)
+ *  · 에러 핸들링 패턴 (Railway Oriented, Result<T,E>, Either)
+ *  · 코드 아키텍처: 3계층, Hexagonal, Clean Architecture
+ *  · 테스트 가능한 코드 설계 (DI, IoC, 순수 함수 우선)
  */
 
 import fs from 'fs';
@@ -26,6 +32,11 @@ export class CoderAgent extends BaseSubAgent {
       'boilerplate-scaffolding',
       'git-operations',
       'context-aware-coding',
+      'clean-code-patterns',
+      'solid-principles',
+      'performance-optimization',
+      'type-safe-design',
+      'error-handling-patterns',
     ];
   }
 
@@ -266,6 +277,8 @@ generateCode(config, request).then(r => {
    */
   private buildCodePrompt(task: Task, projectPath: string, context: string): string {
     return `
+You are a 10x Senior Full-Stack Developer. Write production-grade code.
+
 ## Task
 ${task.title}
 
@@ -274,20 +287,61 @@ ${task.description}
 
 ## Project Info
 - Path: ${projectPath}
-- Type: ${task.phase}
+- Phase: ${task.phase}
 
-## Requirements
-- Write complete, working TypeScript/JavaScript code
-- Include proper error handling
-- Follow existing project conventions
-- If creating new files, specify the file path as a comment at the top: // FILE: src/path/to/file.ts
+## EXPERT CODING STANDARDS (반드시 준수)
+
+### Clean Code
+- 함수는 20줄 이내, 한 가지 역할만 수행
+- 변수명은 의도를 명확히 드러냄 (isLoading, hasPermission, fetchUserById)
+- 매직 넘버 금지 → 상수(CONSTANT_CASE)로 추출
+- 중첩 깊이 최대 3단계 (Early Return 패턴 사용)
+- 주석 대신 자기 문서화 코드 (코드 자체가 설명이 되도록)
+
+### SOLID 원칙
+- SRP: 한 모듈 = 한 책임
+- OCP: 확장에 열림, 수정에 닫힘 (Strategy/Plugin 패턴)
+- LSP: 하위 타입은 상위 타입을 완전히 대체 가능
+- ISP: 필요한 인터페이스만 의존 (작은 인터페이스)
+- DIP: 구현이 아닌 추상화에 의존 (DI 패턴)
+
+### TypeScript 전문가 패턴
+- strict: true 기준으로 작성
+- Discriminated Union으로 상태 모델링
+- Generic constraints로 타입 안전성 확보
+- Readonly<T>, ReadonlyArray<T> 적극 사용
+- Optional chaining(?.) 활용, 불필요한 null assertion(!) 금지
+- as 타입 단언 최소화 → 타입 가드(is) 사용
+
+### 에러 핸들링
+- try-catch는 복구 가능한 곳에서만 사용
+- 에러 타입 구분 (ValidationError, NotFoundError, InternalError)
+- 에러 메시지에 컨텍스트 포함 (무엇이 실패했는지, 왜 실패했는지)
+- 비동기 에러 반드시 처리 (.catch() 또는 try-await-catch)
+
+### 성능
+- O(n²) 이상 루프 회피 → Map/Set 활용
+- 불필요한 객체 복사 최소화
+- 대용량 처리: Stream/Generator 고려
+- 메모이제이션은 측정 후 적용
+
+### 보안
+- 사용자 입력 검증 필수 (Zod/Joi 또는 직접 검증)
+- SQL/NoSQL 인젝션 방지 (파라미터화 쿼리)
+- XSS 방지 (HTML escape, CSP)
+- 하드코딩된 시크릿 금지
+
+## File Output Format
+- 새 파일 생성 시: // FILE: src/path/to/file.ts
+- 여러 파일 필요 시 위 패턴으로 구분
+- 테스트 파일도 함께 생성 권장: // FILE: src/path/to/file.test.ts
 
 ## Existing Project Code (for context)
 ${context.slice(0, 15000)}
 
 ## Instructions
-Generate the code needed to implement this task. Output the code only.
-If multiple files are needed, separate them with: // FILE: path/to/file.ts
+Generate complete, production-ready code for this task.
+Follow ALL expert coding standards above. Output code only.
 `.trim();
   }
 
