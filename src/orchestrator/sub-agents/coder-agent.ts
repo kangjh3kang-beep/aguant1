@@ -45,6 +45,12 @@ export class CoderAgent extends BaseSubAgent {
     const artifacts: string[] = [];
     const outputs: string[] = [];
 
+    // ── 프롬프트 강화: 간단한 태스크도 전문가급 상세 지시로 확장 ──
+    const enhanced = this.enhanceTask(task);
+    outputs.push('[CODER] ── Prompt Enhancement Applied ──');
+    outputs.push(`[CODER] 원본 설명: ${task.description.slice(0, 80)}${task.description.length > 80 ? '...' : ''}`);
+    outputs.push(`[CODER] 강화된 설명 길이: ${enhanced.enhancedDescription.length}자 (${Math.round(enhanced.enhancedDescription.length / Math.max(task.description.length, 1) * 100)}% 확장)`);
+
     // AI 프로바이더 설정 (config에서 or 환경변수 자동 감지)
     const aiConfig = this.config.aiProvider || autoDetectProvider();
 
@@ -274,20 +280,29 @@ generateCode(config, request).then(r => {
 
   /**
    * 태스크에 맞는 코드 생성 프롬프트를 만듭니다.
+   * PromptEnhancer를 활용하여 간단한 명령도 전문가급으로 확장합니다.
    */
   private buildCodePrompt(task: Task, projectPath: string, context: string): string {
+    // ── PromptEnhancer로 시스템 프롬프트 + 사고 프레임워크 생성 ──
+    const enhanced = this.enhanceTask(task);
+
     return `
-You are a 10x Senior Full-Stack Developer. Write production-grade code.
+${enhanced.systemPrompt}
+
+═══════════════════════════════════════
 
 ## Task
 ${task.title}
 
-## Description
-${task.description}
+## Enhanced Description (Prompt Enhancer 적용)
+${enhanced.enhancedDescription}
 
 ## Project Info
 - Path: ${projectPath}
 - Phase: ${task.phase}
+
+## 사고 프레임워크 (Chain-of-Thought)
+${enhanced.thinkingFramework}
 
 ## EXPERT CODING STANDARDS (반드시 준수)
 
@@ -331,10 +346,15 @@ ${task.description}
 - XSS 방지 (HTML escape, CSP)
 - 하드코딩된 시크릿 금지
 
+${enhanced.outputFormat}
+
 ## File Output Format
 - 새 파일 생성 시: // FILE: src/path/to/file.ts
 - 여러 파일 필요 시 위 패턴으로 구분
 - 테스트 파일도 함께 생성 권장: // FILE: src/path/to/file.test.ts
+
+## 품질 검증 체크리스트
+${enhanced.qualityChecklist.map((c) => `- [ ] ${c}`).join('\n')}
 
 ## Existing Project Code (for context)
 ${context.slice(0, 15000)}

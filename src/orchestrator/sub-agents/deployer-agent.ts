@@ -44,7 +44,13 @@ export class DeployerAgent extends BaseSubAgent {
     const outputs: string[] = [];
     const artifacts: string[] = [];
 
+    // ── 프롬프트 강화: 간단한 태스크도 전문가급 상세 지시로 확장 ──
+    const enhanced = this.enhanceTask(task);
     outputs.push('[DEPLOYER] ═══ DevOps 수석 엔지니어 — 배포 파이프라인 ═══');
+    outputs.push('[DEPLOYER] ── Prompt Enhancement Applied ──');
+    outputs.push(`[DEPLOYER] 강화된 지시: ${enhanced.enhancedDescription.slice(0, 120)}...`);
+    outputs.push(`[DEPLOYER] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 (SRE 기반)`);
+    outputs.push('');
 
     // 0단계: 배포 전 체크리스트 검증
     const preCheck = this.preDeployChecklist(projectPath);

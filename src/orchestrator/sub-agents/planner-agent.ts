@@ -14,6 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import { Task, TaskResult } from '../types';
 import { BaseSubAgent } from './base-agent';
+import { EnhancedPrompt } from '../prompt-enhancer';
 
 /* ═════════════════════════════════════════════════
    전문가 지식 베이스 — Architecture Expert Knowledge
@@ -177,8 +178,12 @@ export class PlannerAgent extends BaseSubAgent {
   }
 
   protected executeTask(task: Task, projectPath: string): TaskResult {
+    // ── 프롬프트 강화: 간단한 태스크도 전문가급 상세 지시로 확장 ──
+    const enhanced = this.enhanceTask(task);
+    const enhancedTask = { ...task, description: enhanced.enhancedDescription };
+
     const analysis = this.analyzeProject(projectPath);
-    const plan = this.generatePlan(task, analysis);
+    const plan = this.generatePlan(enhancedTask, analysis, enhanced);
 
     // 아키텍처 안티패턴 탐지
     const antipatternIssues = this.detectAntiPatterns(analysis);
@@ -331,7 +336,7 @@ export class PlannerAgent extends BaseSubAgent {
     };
   }
 
-  private generatePlan(task: Task, analysis: ProjectAnalysis): string {
+  private generatePlan(task: Task, analysis: ProjectAnalysis, enhanced?: EnhancedPrompt): string {
     const L: string[] = [];
     L.push('╔══════════════════════════════════════════════════════════════╗');
     L.push(`║  PLAN: ${task.title.slice(0, 52).padEnd(52)}  ║`);
@@ -420,6 +425,34 @@ export class PlannerAgent extends BaseSubAgent {
         L.push(`│  [${risk.level}] ${risk.description}`);
         L.push(`│        대응: ${risk.mitigation}`);
       }
+      L.push('└──────────────────────────────────────────────────────────');
+    }
+
+    // ── 프롬프트 강화 정보 (확장된 지시 & 사고 프레임워크) ──
+    if (enhanced) {
+      L.push('');
+      L.push('┌─ 프롬프트 강화 적용 ────────────────────────────────────');
+      L.push('│  [Prompt Enhancer] 간단한 명령이 전문가급 지시로 확장됨');
+
+      // 사고 프레임워크 표시
+      const steps = enhanced.thinkingFramework.split('\n').filter((s) => s.trim().startsWith('1') || s.trim().startsWith('2') || s.trim().startsWith('3') || s.trim().startsWith('4') || s.trim().startsWith('5'));
+      if (steps.length > 0) {
+        L.push('│');
+        L.push('│  ── 사고 프레임워크 (Chain-of-Thought) ──');
+        for (const step of steps) {
+          L.push(`│  ${step.trim()}`);
+        }
+      }
+
+      // 품질 체크리스트 표시
+      if (enhanced.qualityChecklist.length > 0) {
+        L.push('│');
+        L.push('│  ── 품질 검증 체크리스트 ──');
+        for (const item of enhanced.qualityChecklist) {
+          L.push(`│  [ ] ${item}`);
+        }
+      }
+
       L.push('└──────────────────────────────────────────────────────────');
     }
 

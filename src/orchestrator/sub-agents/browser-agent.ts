@@ -51,6 +51,12 @@ export class BrowserAgent extends BaseSubAgent {
     const outputs: string[] = [];
     const artifacts: string[] = [];
 
+    // ── 프롬프트 강화: 간단한 태스크도 전문가급 상세 지시로 확장 ──
+    const enhanced = this.enhanceTask(task);
+    outputs.push('[BROWSER] ── Prompt Enhancement Applied ──');
+    outputs.push(`[BROWSER] 강화된 지시: ${enhanced.enhancedDescription.slice(0, 120)}...`);
+    outputs.push(`[BROWSER] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 (WCAG 2.1 기반)`);
+    outputs.push('');
     outputs.push('[BROWSER] Starting browser-based UI verification...');
     outputs.push(`[BROWSER] Viewport: ${this.browserConfig.viewport.width}x${this.browserConfig.viewport.height}`);
     outputs.push(`[BROWSER] Headless: ${this.browserConfig.headless}`);

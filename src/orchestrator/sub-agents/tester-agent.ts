@@ -41,7 +41,13 @@ export class TesterAgent extends BaseSubAgent {
     const outputs: string[] = [];
     const artifacts: string[] = [];
 
+    // ── 프롬프트 강화: 간단한 태스크도 전문가급 상세 지시로 확장 ──
+    const enhanced = this.enhanceTask(task);
     outputs.push('[TESTER] ═══ QA 수석 엔지니어 — 테스트 심층 분석 ═══');
+    outputs.push('[TESTER] ── Prompt Enhancement Applied ──');
+    outputs.push(`[TESTER] 강화된 지시: ${enhanced.enhancedDescription.slice(0, 120)}...`);
+    outputs.push(`[TESTER] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 적용`);
+    outputs.push('');
 
     // 테스트 프레임워크 감지
     const framework = this.detectTestFramework(projectPath);

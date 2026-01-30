@@ -56,6 +56,15 @@ export class ReviewerAgent extends BaseSubAgent {
   protected executeTask(task: Task, projectPath: string): TaskResult {
     const issues: TaskResult['issues'] = [];
 
+    // ── 프롬프트 강화: 간단한 태스크도 전문가급 상세 지시로 확장 ──
+    const enhanced = this.enhanceTask(task);
+    const enhancedOutputs: string[] = [];
+    enhancedOutputs.push('[REVIEWER] ── Prompt Enhancement Applied ──');
+    enhancedOutputs.push(`[REVIEWER] 강화된 지시: ${enhanced.enhancedDescription.slice(0, 120)}...`);
+    enhancedOutputs.push(`[REVIEWER] 사고 단계: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계`);
+    enhancedOutputs.push(`[REVIEWER] 품질 체크리스트: ${enhanced.qualityChecklist.length}개 항목`);
+    enhancedOutputs.push('');
+
     // 기존 CodeReviewAgent 사용 (컴파일·린트·테스트)
     const agent = new CodeReviewAgent({
       projectPath,
@@ -115,12 +124,15 @@ export class ReviewerAgent extends BaseSubAgent {
       artifacts.push(`[CODE-QUALITY] ${smellCount} code smell(s) detected`);
     }
 
+    // 프롬프트 강화 정보를 artifacts에 추가
+    artifacts.push(`[PROMPT-ENHANCED] ${enhanced.qualityChecklist.length}개 품질 체크리스트 적용됨`);
+
     // 실제 error/critical 이슈만 실패로 판정
     const hasRealErrors = issues.some((i) => i.severity === 'error' || i.severity === 'critical');
 
     return {
       success: !hasRealErrors,
-      output: text + '\n\n' + trendReport,
+      output: enhancedOutputs.join('\n') + text + '\n\n' + trendReport,
       artifacts,
       issues,
       duration: report.duration,

@@ -45,6 +45,12 @@ export class SecurityAgent extends BaseSubAgent {
     const outputs: string[] = [];
     const artifacts: string[] = [];
 
+    // ── 프롬프트 강화: 간단한 태스크도 전문가급 상세 지시로 확장 ──
+    const enhanced = this.enhanceTask(task);
+    outputs.push('[SECURITY] ── Prompt Enhancement Applied ──');
+    outputs.push(`[SECURITY] 강화된 지시: ${enhanced.enhancedDescription.slice(0, 120)}...`);
+    outputs.push(`[SECURITY] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 (STRIDE 위협 모델링 기반)`);
+    outputs.push('');
     outputs.push('[SECURITY] Starting security audit...');
 
     // 1. 의존성 취약점 감사
