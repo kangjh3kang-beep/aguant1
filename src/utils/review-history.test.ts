@@ -9,7 +9,7 @@ import {
   formatTrendReport,
   HistoryEntry,
 } from './review-history';
-import { ReviewReport, StageResult } from '../types';
+import { ReviewReport } from '../types';
 
 // fs 모킹
 jest.mock('fs');

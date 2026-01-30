@@ -1,4 +1,7 @@
 import { CodeReviewAgent } from './agent';
+import { analyzeCompile } from './analyzers/compile-analyzer';
+import { validateProjectPath } from './utils/process-runner';
+import { saveToHistory } from './utils/review-history';
 
 // 분석기 모듈 모킹
 jest.mock('./analyzers/compile-analyzer', () => ({
@@ -95,6 +98,10 @@ jest.mock('./utils/review-history', () => ({
   formatTrendReport: jest.fn().mockReturnValue('Trend Report Text'),
 }));
 
+const mockedAnalyzeCompile = jest.mocked(analyzeCompile);
+const mockedValidateProjectPath = jest.mocked(validateProjectPath);
+const mockedSaveToHistory = jest.mocked(saveToHistory);
+
 describe('CodeReviewAgent', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -123,8 +130,7 @@ describe('CodeReviewAgent', () => {
   });
 
   it('should support fail-fast mode', () => {
-    const { analyzeCompile } = require('./analyzers/compile-analyzer');
-    analyzeCompile.mockReturnValueOnce({
+    mockedAnalyzeCompile.mockReturnValueOnce({
       stage: 'compile',
       status: 'fail',
       issues: [{ stage: 'compile', severity: 'error', file: 'a.ts', message: 'Error' }],
@@ -159,8 +165,6 @@ describe('CodeReviewAgent', () => {
   });
 
   it('should use custom commands when provided', () => {
-    const { analyzeCompile } = require('./analyzers/compile-analyzer');
-
     const agent = new CodeReviewAgent({
       projectPath: '/test',
       stages: ['compile'],
@@ -168,7 +172,7 @@ describe('CodeReviewAgent', () => {
     });
     agent.run();
 
-    expect(analyzeCompile).toHaveBeenCalledWith('/test', 'custom-compile-cmd');
+    expect(mockedAnalyzeCompile).toHaveBeenCalledWith('/test', 'custom-compile-cmd');
   });
 
   it('should calculate total duration', () => {
@@ -179,8 +183,7 @@ describe('CodeReviewAgent', () => {
   });
 
   it('should handle stage crash gracefully', () => {
-    const { analyzeCompile } = require('./analyzers/compile-analyzer');
-    analyzeCompile.mockImplementationOnce(() => {
+    mockedAnalyzeCompile.mockImplementationOnce(() => {
       throw new Error('Unexpected crash');
     });
 
@@ -196,8 +199,7 @@ describe('CodeReviewAgent', () => {
   });
 
   it('should fail for invalid project path', () => {
-    const { validateProjectPath } = require('./utils/process-runner');
-    validateProjectPath.mockReturnValueOnce({ valid: false, reason: 'Path does not exist' });
+    mockedValidateProjectPath.mockReturnValueOnce({ valid: false, reason: 'Path does not exist' });
 
     const agent = new CodeReviewAgent({ projectPath: '/nonexistent' });
     const report = agent.run();
@@ -231,12 +233,10 @@ describe('CodeReviewAgent', () => {
   });
 
   it('should save to history after run (learning loop)', () => {
-    const { saveToHistory } = require('./utils/review-history');
-
     const agent = new CodeReviewAgent({ projectPath: '/test' });
     agent.run();
 
-    expect(saveToHistory).toHaveBeenCalledWith('/test', expect.any(Object));
+    expect(mockedSaveToHistory).toHaveBeenCalledWith('/test', expect.any(Object));
   });
 
   it('should include insights in report from learning loop', () => {
@@ -264,8 +264,7 @@ describe('CodeReviewAgent', () => {
   });
 
   it('should not fail if learning loop throws', () => {
-    const { saveToHistory } = require('./utils/review-history');
-    saveToHistory.mockImplementationOnce(() => {
+    mockedSaveToHistory.mockImplementationOnce(() => {
       throw new Error('Disk full');
     });
 
