@@ -325,6 +325,20 @@ program
     console.log('');
   });
 
+// ─── dashboard ───────────────────────────────────────────
+program
+  .command('dashboard')
+  .description('웹 대시보드를 실행합니다 (브라우저에서 사용)')
+  .option('-p, --path <path>', '프로젝트 경로', process.cwd())
+  .option('--port <port>', '포트 번호', '3000')
+  .action((options) => {
+    const projectPath = path.resolve(options.path);
+    const port = parseInt(options.port, 10) || 3000;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { startDashboard } = require('./web/server');
+    startDashboard(port, projectPath);
+  });
+
 // ─── update ────────────────────────────────────────────────
 program
   .command('update')

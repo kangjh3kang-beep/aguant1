@@ -1,0 +1,224 @@
+# Antigravity Code Review - GitHub Actions
+# PR 생성 및 push 시 자동 코드리뷰를 실행합니다.
+#
+# 설정 방법:
+#   1. 이 파일을 프로젝트의 .github/workflows/ 에 복사
+#   2. AI 코드 생성 사용 시 Repository Secrets에 API 키 추가:
+#      - ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY (1개 이상)
+
+name: Antigravity Code Review
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  code-review:
+    name: Code Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Antigravity
+        run: |
+          cd ${{ github.workspace }}
+          if [ -f "node_modules/.bin/ag-review" ]; then
+            echo "ag-review found in project dependencies"
+          else
+            npm install -g @antigravity/code-review-agent || true
+          fi
+
+      - name: Run Code Review
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          set +e
+          RESULT=$(npx ag-review review --json 2>&1)
+          EXIT_CODE=$?
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+          # JSON 결과를 파일에 저장
+          echo "$RESULT" > /tmp/ag-review-result.json
+
+          # 요약 추출
+          if echo "$RESULT" | jq -e '.passed' > /dev/null 2>&1; then
+            PASSED=$(echo "$RESULT" | jq -r '.passed')
+            DURATION=$(echo "$RESULT" | jq -r '.duration')
+            ERROR_COUNT=$(echo "$RESULT" | jq -r '.errorCount // 0')
+            WARNING_COUNT=$(echo "$RESULT" | jq -r '.warningCount // 0')
+            echo "passed=$PASSED" >> $GITHUB_OUTPUT
+            echo "duration=$DURATION" >> $GITHUB_OUTPUT
+            echo "errors=$ERROR_COUNT" >> $GITHUB_OUTPUT
+            echo "warnings=$WARNING_COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "passed=unknown" >> $GITHUB_OUTPUT
+            echo "duration=0" >> $GITHUB_OUTPUT
+            echo "errors=0" >> $GITHUB_OUTPUT
+            echo "warnings=0" >> $GITHUB_OUTPUT
+          fi
+
+          exit 0
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let result;
+            try {
+              const raw = fs.readFileSync('/tmp/ag-review-result.json', 'utf8');
+              result = JSON.parse(raw);
+            } catch (e) {
+              result = null;
+            }
+
+            const passed = '${{ steps.review.outputs.passed }}' === 'true';
+            const duration = '${{ steps.review.outputs.duration }}';
+            const errors = '${{ steps.review.outputs.errors }}';
+            const warnings = '${{ steps.review.outputs.warnings }}';
+            const status = passed ? '✅ PASS' : '❌ FAIL';
+
+            let body = `## ${status} Antigravity Code Review\n\n`;
+            body += `| 항목 | 결과 |\n|------|------|\n`;
+            body += `| 상태 | ${status} |\n`;
+            body += `| 에러 | ${errors} |\n`;
+            body += `| 경고 | ${warnings} |\n`;
+            body += `| 소요시간 | ${duration}ms |\n\n`;
+
+            if (result && result.stages) {
+              body += `### 단계별 결과\n\n`;
+              for (const stage of result.stages) {
+                const stageStatus = stage.status === 'pass' ? '✅' : '❌';
+                body += `${stageStatus} **${stage.stage.toUpperCase()}** — ${stage.issues.length} issue(s) (${stage.duration}ms)\n\n`;
+
+                if (stage.issues.length > 0) {
+                  for (const issue of stage.issues.slice(0, 10)) {
+                    const icon = issue.severity === 'error' ? '🔴' : '🟡';
+                    const file = issue.file ? ` \`${issue.file}${issue.line ? ':' + issue.line : ''}\`` : '';
+                    body += `- ${icon} ${issue.message}${file}\n`;
+                  }
+                  if (stage.issues.length > 10) {
+                    body += `- ... 외 ${stage.issues.length - 10}건\n`;
+                  }
+                  body += '\n';
+                }
+              }
+            }
+
+            if (result && result.insights && result.insights.length > 0) {
+              body += `### 💡 학습 인사이트\n\n`;
+              for (const insight of result.insights) {
+                body += `- ${insight}\n`;
+              }
+              body += '\n';
+            }
+
+            body += `---\n*Powered by [Antigravity](https://github.com/kangjh3kang-beep/aguant1) Code Review Agent*`;
+
+            // 기존 코멘트 찾기
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existingComment = comments.find(c =>
+              c.body.includes('Antigravity Code Review') && c.user.type === 'Bot'
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Set exit code
+        if: steps.review.outputs.passed == 'false'
+        run: exit 1
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Security Scan
+        run: |
+          npx ag-review orchestrate --phases security --json > /tmp/security-result.json 2>&1 || true
+
+      - name: Security Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let result;
+            try {
+              result = JSON.parse(fs.readFileSync('/tmp/security-result.json', 'utf8'));
+            } catch {
+              console.log('Security scan result not available');
+              return;
+            }
+
+            const secTasks = (result.tasks || []).filter(t => t.phase === 'security');
+            const issues = secTasks.flatMap(t => t.result ? t.result.issues : []);
+
+            if (issues.length === 0) return;
+
+            let body = `## 🛡️ Antigravity Security Scan\n\n`;
+            body += `발견된 보안 이슈: **${issues.length}건**\n\n`;
+
+            for (const issue of issues) {
+              const icon = issue.severity === 'critical' ? '🔴' : issue.severity === 'error' ? '🟠' : '🟡';
+              body += `- ${icon} **${issue.severity.toUpperCase()}**: ${issue.message}\n`;
+            }
+
+            body += `\n---\n*Powered by Antigravity Security Agent*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

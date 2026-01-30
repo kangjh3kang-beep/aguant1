@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0a0e17; --surface: #111827; --surface2: #1f2937;
+      --border: #374151; --text: #e5e7eb; --text2: #9ca3af;
+      --primary: #6366f1; --primary-hover: #818cf8;
+      --success: #10b981; --error: #ef4444; --warn: #f59e0b; --info: #3b82f6;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* Header */
+    .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; }
+    .header h1 { font-size: 20px; font-weight: 700; }
+    .header h1 span { color: var(--primary); }
+    .header .project-info { color: var(--text2); font-size: 13px; }
+
+    /* Layout */
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+    /* Agent Cards */
+    .agents-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 32px; }
+    .agent-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; transition: all 0.3s; cursor: default; }
+    .agent-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+    .agent-card .icon { font-size: 28px; margin-bottom: 8px; }
+    .agent-card .name { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .agent-card .desc { font-size: 10px; color: var(--text2); }
+    .agent-card.active { border-color: var(--primary); box-shadow: 0 0 20px rgba(99,102,241,0.2); }
+    .agent-card.done { border-color: var(--success); }
+    .agent-card.fail { border-color: var(--error); }
+
+    /* Action Buttons */
+    .actions { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--primary); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Panels */
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .panel-body { padding: 20px; max-height: 500px; overflow-y: auto; }
+    .panel-full { grid-column: 1 / -1; }
+
+    /* Status Badge */
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-pass { background: rgba(16,185,129,0.15); color: var(--success); }
+    .badge-fail { background: rgba(239,68,68,0.15); color: var(--error); }
+    .badge-running { background: rgba(99,102,241,0.15); color: var(--primary); }
+    .badge-pending { background: rgba(156,163,175,0.15); color: var(--text2); }
+
+    /* Log */
+    .log-entry { padding: 6px 0; font-size: 13px; font-family: 'SF Mono', 'Consolas', monospace; border-bottom: 1px solid rgba(55,65,81,0.5); display: flex; gap: 12px; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--text2); white-space: nowrap; min-width: 80px; }
+    .log-msg { word-break: break-word; }
+    .log-info { color: var(--text); }
+    .log-error { color: var(--error); }
+    .log-warn { color: var(--warn); }
+
+    /* Task list */
+    .task-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(55,65,81,0.5); font-size: 13px; }
+    .task-item:last-child { border-bottom: none; }
+    .task-phase { background: var(--surface2); padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase; min-width: 70px; text-align: center; }
+    .task-title { flex: 1; }
+
+    /* History */
+    .history-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid rgba(55,65,81,0.5); font-size: 13px; }
+    .history-row:last-child { border-bottom: none; }
+    .history-date { color: var(--text2); min-width: 150px; }
+    .history-branch { color: var(--info); min-width: 120px; font-family: monospace; }
+    .history-stats { color: var(--text2); }
+
+    /* Progress bar */
+    .progress-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+    .progress-fill.green { background: var(--success); }
+    .progress-fill.red { background: var(--error); }
+    .progress-fill.blue { background: var(--primary); }
+
+    /* Summary Stats */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .stat-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+    .stat-value { font-size: 28px; font-weight: 700; }
+    .stat-value.green { color: var(--success); }
+    .stat-value.red { color: var(--error); }
+    .stat-value.blue { color: var(--primary); }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 40px; color: var(--text2); }
+
+    /* Responsive */
+    @media (max-width: 1024px) { .agents-grid { grid-template-columns: repeat(4, 1fr); } .panels { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .agents-grid { grid-template-columns: repeat(2, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } .container { padding: 16px; } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>ANTIGRAVITY</span> Dashboard</h1>
+  <div class="project-info" id="project-info">로딩 중...</div>
+</div>
+
+<div class="container">
+  <!-- Agent Cards -->
+  <div class="agents-grid" id="agents-grid"></div>
+
+  <!-- Action Buttons -->
+  <div class="actions">
+    <button class="btn btn-primary" id="btn-review" onclick="runReview()">코드리뷰</button>
+    <button class="btn btn-primary" id="btn-orchestrate" onclick="runOrchestrate()">AI 파이프라인</button>
+    <button class="btn btn-secondary" id="btn-fix" onclick="runFix()">자동 수정</button>
+    <button class="btn btn-secondary" id="btn-security" onclick="runSecurity()">보안 검사</button>
+    <button class="btn btn-secondary" id="btn-history" onclick="loadHistory()">히스토리</button>
+    <button class="btn btn-secondary" id="btn-trend" onclick="loadTrend()">트렌드</button>
+  </div>
+
+  <!-- Summary Stats -->
+  <div class="stats" id="stats" style="display:none;">
+    <div class="stat-card"><div class="stat-label">상태</div><div class="stat-value" id="stat-status">-</div></div>
+    <div class="stat-card"><div class="stat-label">완료 태스크</div><div class="stat-value blue" id="stat-tasks">-</div></div>
+    <div class="stat-card"><div class="stat-label">이슈</div><div class="stat-value red" id="stat-issues">-</div></div>
+    <div class="stat-card"><div class="stat-label">소요 시간</div><div class="stat-value" id="stat-duration">-</div></div>
+  </div>
+
+  <!-- Panels -->
+  <div class="panels" id="panels">
+    <div class="panel panel-full" id="panel-main" style="display:none;">
+      <div class="panel-header">
+        <span id="panel-title">실행 결과</span>
+        <span class="badge" id="panel-badge"></span>
+      </div>
+      <div class="panel-body" id="panel-body"></div>
+    </div>
+    <div class="panel" id="panel-log" style="display:none;">
+      <div class="panel-header">실행 로그</div>
+      <div class="panel-body" id="log-body"></div>
+    </div>
+    <div class="panel" id="panel-tasks" style="display:none;">
+      <div class="panel-header">태스크 목록</div>
+      <div class="panel-body" id="tasks-body"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+
+// ─── 초기화 ───
+async function init() {
+  try {
+    const [projectRes, teamRes] = await Promise.all([
+      fetch(`${API}/api/project`), fetch(`${API}/api/team`)
+    ]);
+    const project = await projectRes.json();
+    const team = await teamRes.json();
+
+    document.getElementById('project-info').textContent = `${project.name} — ${project.path}`;
+    renderAgents(team.agents);
+  } catch (e) {
+    document.getElementById('project-info').textContent = '프로젝트 연결 실패';
+  }
+}
+
+function renderAgents(agents) {
+  const grid = document.getElementById('agents-grid');
+  grid.innerHTML = agents.map(a => `
+    <div class="agent-card" id="agent-${a.role}">
+      <div class="icon">${a.icon}</div>
+      <div class="name">${a.name}</div>
+      <div class="desc">${a.description}</div>
+    </div>
+  `).join('');
+}
+
+function setAgentState(role, state) {
+  const el = document.getElementById(`agent-${role}`);
+  if (el) { el.className = `agent-card ${state}`; }
+}
+
+function resetAgents() {
+  document.querySelectorAll('.agent-card').forEach(el => el.className = 'agent-card');
+}
+
+// ─── 버튼 상태 관리 ───
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (loading) {
+    btn.disabled = true;
+    btn._text = btn.textContent;
+    btn.innerHTML = `<span class="spinner"></span> 실행 중...`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn._text || btn.textContent;
+  }
+}
+
+// ─── 결과 표시 ───
+function showStats(data) {
+  document.getElementById('stats').style.display = 'grid';
+  document.getElementById('stat-status').textContent = data.status || '-';
+  document.getElementById('stat-status').className = `stat-value ${data.passed ? 'green' : 'red'}`;
+  document.getElementById('stat-tasks').textContent = data.tasks || '-';
+  document.getElementById('stat-issues').textContent = data.issues || '0';
+  document.getElementById('stat-duration').textContent = data.duration || '-';
+}
+
+function showPanel(title, badge, badgeClass, html) {
+  const panel = document.getElementById('panel-main');
+  panel.style.display = 'block';
+  document.getElementById('panel-title').textContent = title;
+  const b = document.getElementById('panel-badge');
+  b.textContent = badge;
+  b.className = `badge ${badgeClass}`;
+  document.getElementById('panel-body').innerHTML = html;
+}
+
+function showLogs(logs) {
+  const panel = document.getElementById('panel-log');
+  panel.style.display = 'block';
+  const body = document.getElementById('log-body');
+  body.innerHTML = logs.map(l => {
+    const time = new Date(l.timestamp).toLocaleTimeString();
+    const cls = l.level === 'error' ? 'log-error' : l.level === 'warn' ? 'log-warn' : 'log-info';
+    const prefix = l.level === 'error' ? '\u2717' : l.level === 'warn' ? '!' : '\u2192';
+    return `<div class="log-entry"><span class="log-time">${time}</span><span class="log-msg ${cls}">${prefix} ${escapeHtml(l.message)}</span></div>`;
+  }).join('');
+}
+
+function showTasks(tasks) {
+  const panel = document.getElementById('panel-tasks');
+  panel.style.display = 'block';
+  const body = document.getElementById('tasks-body');
+  body.innerHTML = tasks.map(t => {
+    const statusBadge = t.status === 'completed' ? 'badge-pass' : t.status === 'failed' ? 'badge-fail' : 'badge-pending';
+    const statusText = t.status === 'completed' ? 'PASS' : t.status === 'failed' ? 'FAIL' : t.status.toUpperCase();
+    return `<div class="task-item">
+      <span class="task-phase">${t.phase}</span>
+      <span class="task-title">${escapeHtml(t.title)}</span>
+      <span class="badge ${statusBadge}">${statusText}</span>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function clearPanels() {
+  ['panel-main','panel-log','panel-tasks'].forEach(id => document.getElementById(id).style.display = 'none');
+  document.getElementById('stats').style.display = 'none';
+}
+
+// ─── 코드리뷰 ───
+async function runReview() {
+  clearPanels(); resetAgents();
+  setLoading('btn-review', true);
+  setAgentState('reviewer', 'active');
+  try {
+    const res = await fetch(`${API}/api/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    setAgentState('reviewer', data.passed ? 'done' : 'fail');
+
+    const totalIssues = data.stages.reduce((s,st) => s + st.issueCount, 0);
+    showStats({
+      status: data.passed ? 'PASS' : 'FAIL', passed: data.passed,
+      tasks: `${data.stages.length} stages`, issues: totalIssues,
+      duration: `${(data.duration / 1000).toFixed(1)}s`
+    });
+
+    let html = data.stages.map(s => {
+      const cls = s.status === 'pass' ? 'badge-pass' : 'badge-fail';
+      const issuesHtml = s.issues.map(i =>
+        `<div style="padding:4px 0;font-size:12px;color:${i.severity === 'error' ? 'var(--error)' : 'var(--warn)'}">
+          ${i.severity.toUpperCase()}: ${escapeHtml(i.message)}${i.file ? ` (${i.file}:${i.line || ''})` : ''}
+        </div>`
+      ).join('');
+      return `<div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <strong>${s.stage.toUpperCase()}</strong>
+          <span class="badge ${cls}">${s.issueCount} issues (${s.duration}ms)</span>
+        </div>
+        ${issuesHtml || '<div style="color:var(--success);font-size:12px;">이슈 없음</div>'}
+      </div>`;
+    }).join('');
+
+    if (data.insights.length > 0) {
+      html += `<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <strong>학습 인사이트</strong>
+        ${data.insights.map(i => `<div style="font-size:12px;color:var(--info);padding:4px 0;">${escapeHtml(i)}</div>`).join('')}
+      </div>`;
+    }
+
+    showPanel('코드리뷰 결과', data.passed ? 'PASS' : 'FAIL', data.passed ? 'badge-pass' : 'badge-fail', html);
+  } catch (e) {
+    showPanel('오류', 'ERROR', 'badge-fail', `<div style="color:var(--error)">${escapeHtml(e.message)}</div>`);
+  }
+  setLoading('btn-review', false);
+}
+
+// ─── AI 파이프라인 ───
+async function runOrchestrate() {
+  clearPanels(); resetAgents();
+  setLoading('btn-orchestrate', true);
+
+  const phaseAgentMap = { plan:'planner', code:'coder', review:'reviewer', test:'tester', security:'security', browser:'browser', deploy:'deployer' };
+  Object.values(phaseAgentMap).forEach(r => setAgentState(r, 'active'));
+
+  try {
+    const res = await fetch(`${API}/api/orchestrate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // 에이전트 상태 업데이트
+    for (const t of data.tasks) {
+      const role = t.agent;
+      if (t.status === 'completed') setAgentState(role, 'done');
+      else if (t.status === 'failed') setAgentState(role, 'fail');
+    }
+
+    const completed = data.tasks.filter(t => t.status === 'completed').length;
+    const failed = data.tasks.filter(t => t.status === 'failed').length;
+    const totalIssues = data.tasks.reduce((s,t) => s + (t.result ? t.result.issueCount : 0), 0);
+    const elapsed = data.completedAt && data.startedAt ? ((new Date(data.completedAt) - new Date(data.startedAt)) / 1000).toFixed(1) : '-';
+
+    showStats({
+      status: data.status.toUpperCase(), passed: data.status === 'completed',
+      tasks: `${completed}/${data.tasks.length}`, issues: totalIssues + failed,
+      duration: `${elapsed}s`
+    });
+
+    showTasks(data.tasks);
+    showLogs(data.logs);
+
+    showPanel('AI 파이프라인 결과',
+      data.status === 'completed' ? 'COMPLETED' : 'FAILED',
+      data.status === 'completed' ? 'badge-pass' : 'badge-fail',
+      `<div>
+        <div style="margin-bottom:12px;">
+          <strong>에이전트 현황</strong>
+          ${data.agents.map(a => `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid rgba(55,65,81,0.5);">
+            <span>${a.name}</span>
+            <span style="color:var(--text2)">완료:${a.completedTasks} 실패:${a.failedTasks} 평균:${a.avgDuration}ms</span>
+          </div>`).join('')}
+        </div>
+      </div>`
+    );
+  } catch (e) {
+    showPanel('오류', 'ERROR', 'badge-fail', `<div style="color:var(--error)">${escapeHtml(e.message)}</div>`);
+    resetAgents();
+  }
+  setLoading('btn-orchestrate', false);
+}
+
+// ─── 자동 수정 ───
+async function runFix() {
+  clearPanels(); resetAgents();
+  setLoading('btn-fix', true);
+  setAgentState('reviewer', 'active');
+  try {
+    const res = await fetch(`${API}/api/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ autoFix: true }) });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    setAgentState('reviewer', data.passed ? 'done' : 'fail');
+
+    let fixHtml = '<div style="color:var(--text2)">자동 수정 결과 없음</div>';
+    if (data.fixReport) {
+      fixHtml = `<div>
+        <div style="padding:6px 0;">린트 자동 수정: <strong>${data.fixReport.lintFixedCount}</strong>건</div>
+        <div style="padding:6px 0;">스냅샷 업데이트: <strong>${data.fixReport.snapshotsUpdated ? 'Yes' : 'No'}</strong></div>
+        <div style="padding:6px 0;">제안 사항: <strong>${data.fixReport.suggestions.length}</strong>건</div>
+      </div>`;
+    }
+    showPanel('자동 수정 결과', data.passed ? 'PASS' : 'FAIL', data.passed ? 'badge-pass' : 'badge-fail', fixHtml);
+  } catch (e) {
+    showPanel('오류', 'ERROR', 'badge-fail', `<div style="color:var(--error)">${escapeHtml(e.message)}</div>`);
+  }
+  setLoading('btn-fix', false);
+}
+
+// ─── 보안 검사 ───
+async function runSecurity() {
+  clearPanels(); resetAgents();
+  setLoading('btn-security', true);
+  setAgentState('security', 'active');
+  try {
+    const res = await fetch(`${API}/api/orchestrate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ phases: ['security'] }) });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const secTasks = data.tasks.filter(t => t.phase === 'security');
+    const passed = secTasks.every(t => t.status === 'completed');
+    setAgentState('security', passed ? 'done' : 'fail');
+
+    const issues = secTasks.flatMap(t => t.result ? t.result.issues : []);
+    const html = issues.length > 0
+      ? issues.map(i => `<div style="padding:6px 0;font-size:13px;color:${i.severity === 'critical' ? 'var(--error)' : 'var(--warn)'}">
+          ${i.severity.toUpperCase()}: ${escapeHtml(i.message)}
+        </div>`).join('')
+      : '<div style="color:var(--success)">보안 이슈 없음</div>';
+
+    showPanel('보안 검사 결과', passed ? 'PASS' : `${issues.length} ISSUES`, passed ? 'badge-pass' : 'badge-fail', html);
+  } catch (e) {
+    showPanel('오류', 'ERROR', 'badge-fail', `<div style="color:var(--error)">${escapeHtml(e.message)}</div>`);
+  }
+  setLoading('btn-security', false);
+}
+
+// ─── 히스토리 ───
+async function loadHistory() {
+  clearPanels(); resetAgents();
+  setLoading('btn-history', true);
+  try {
+    const res = await fetch(`${API}/api/history`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (data.entries.length === 0) {
+      showPanel('리뷰 히스토리', `${data.total}건`, 'badge-pending', '<div class="empty">리뷰 기록이 없습니다.<br>코드리뷰를 실행하면 여기에 기록됩니다.</div>');
+    } else {
+      const html = data.entries.reverse().map(e => {
+        const date = new Date(e.timestamp).toLocaleString('ko-KR');
+        const status = e.passed ? 'PASS' : 'FAIL';
+        const cls = e.passed ? 'badge-pass' : 'badge-fail';
+        return `<div class="history-row">
+          <span class="history-date">${date}</span>
+          <span class="history-branch">${e.gitBranch || '-'}</span>
+          <span class="badge ${cls}">${status}</span>
+          <span class="history-stats">errors:${e.errorCount} warnings:${e.warningCount} (${e.duration}ms)</span>
+        </div>`;
+      }).join('');
+      showPanel('리뷰 히스토리', `${data.total}건`, 'badge-pending', html);
+    }
+  } catch (e) {
+    showPanel('오류', 'ERROR', 'badge-fail', `<div style="color:var(--error)">${escapeHtml(e.message)}</div>`);
+  }
+  setLoading('btn-history', false);
+}
+
+// ─── 트렌드 ───
+async function loadTrend() {
+  clearPanels(); resetAgents();
+  setLoading('btn-trend', true);
+  try {
+    const res = await fetch(`${API}/api/trend`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (data.totalRuns === 0) {
+      showPanel('코드 품질 트렌드', '0건', 'badge-pending', '<div class="empty">리뷰 기록이 없습니다.</div>');
+    } else {
+      const passRate = data.totalRuns > 0 ? Math.round((data.passCount / data.totalRuns) * 100) : 0;
+      const trendDir = data.direction === 'improving' ? '개선 중' : data.direction === 'degrading' ? '악화 중' : '안정';
+      const trendColor = data.direction === 'improving' ? 'var(--success)' : data.direction === 'degrading' ? 'var(--error)' : 'var(--info)';
+
+      showStats({
+        status: trendDir, passed: data.direction !== 'degrading',
+        tasks: `${data.totalRuns}회 실행`, issues: `${passRate}% 통과`,
+        duration: data.avgDuration ? `${(data.avgDuration / 1000).toFixed(1)}s 평균` : '-'
+      });
+
+      const html = `<div>
+        <div style="margin-bottom:16px;">
+          <div style="font-size:24px;font-weight:700;color:${trendColor};margin-bottom:4px;">${trendDir}</div>
+          <div style="color:var(--text2)">최근 ${data.totalRuns}회 리뷰 분석 결과</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div><div style="color:var(--text2);font-size:12px;">통과율</div><div style="font-size:20px;font-weight:600;">${passRate}%</div>
+            <div class="progress-bar"><div class="progress-fill green" style="width:${passRate}%"></div></div>
+          </div>
+          <div><div style="color:var(--text2);font-size:12px;">총 실행</div><div style="font-size:20px;font-weight:600;">${data.totalRuns}회</div></div>
+          <div><div style="color:var(--text2);font-size:12px;">통과</div><div style="font-size:20px;font-weight:600;color:var(--success)">${data.passCount}</div></div>
+          <div><div style="color:var(--text2);font-size:12px;">실패</div><div style="font-size:20px;font-weight:600;color:var(--error)">${data.failCount || data.totalRuns - data.passCount}</div></div>
+        </div>
+      </div>`;
+      showPanel('코드 품질 트렌드', trendDir, data.direction === 'improving' ? 'badge-pass' : 'badge-fail', html);
+    }
+  } catch (e) {
+    showPanel('오류', 'ERROR', 'badge-fail', `<div style="color:var(--error)">${escapeHtml(e.message)}</div>`);
+  }
+  setLoading('btn-trend', false);
+}
+
+// 시작
+init();
+</script>
+</body>
+</html>
