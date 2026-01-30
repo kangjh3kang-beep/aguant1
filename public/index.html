@@ -109,7 +109,14 @@
 
 <div class="header">
   <h1><span>ANTIGRAVITY</span> Dashboard</h1>
-  <div class="project-info" id="project-info">로딩 중...</div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <label style="color:var(--text2);font-size:13px;white-space:nowrap;">프로젝트:</label>
+    <input type="text" id="path-input" placeholder="프로젝트 경로 입력..."
+      style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:13px;width:340px;font-family:monospace;"
+    >
+    <button class="btn btn-primary" onclick="changeProject()" style="padding:6px 14px;font-size:12px;">변경</button>
+    <span class="project-info" id="project-info" style="font-size:12px;color:var(--text2);"></span>
+  </div>
 </div>
 
 <div class="container">
@@ -156,17 +163,50 @@
 
 <script>
 const API = '';
+let currentPath = '';
+
+// ─── 프로젝트 경로 변경 ───
+function changeProject() {
+  const input = document.getElementById('path-input');
+  const newPath = input.value.trim();
+  if (newPath) {
+    currentPath = newPath;
+    clearPanels();
+    resetAgents();
+    init();
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('path-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') changeProject();
+  });
+});
+
+// ─── API 헬퍼 ───
+function apiQuery(params = {}) {
+  if (currentPath) params.path = currentPath;
+  const qs = new URLSearchParams(params).toString();
+  return qs ? `?${qs}` : '';
+}
+function apiBody(extra = {}) {
+  const body = { ...extra };
+  if (currentPath) body.path = currentPath;
+  return body;
+}
 
 // ─── 초기화 ───
 async function init() {
   try {
     const [projectRes, teamRes] = await Promise.all([
-      fetch(`${API}/api/project`), fetch(`${API}/api/team`)
+      fetch(`${API}/api/project${apiQuery()}`), fetch(`${API}/api/team`)
     ]);
     const project = await projectRes.json();
     const team = await teamRes.json();
 
-    document.getElementById('project-info').textContent = `${project.name} — ${project.path}`;
+    document.getElementById('project-info').textContent = `${project.name} (v${project.version || '?'})`;
+    const input = document.getElementById('path-input');
+    if (!input.value.trim()) input.value = project.path;
+    if (!currentPath) currentPath = project.path;
     renderAgents(team.agents);
   } catch (e) {
     document.getElementById('project-info').textContent = '프로젝트 연결 실패';
@@ -265,7 +305,7 @@ async function runReview() {
   setLoading('btn-review', true);
   setAgentState('reviewer', 'active');
   try {
-    const res = await fetch(`${API}/api/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    const res = await fetch(`${API}/api/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(apiBody({})) });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -317,7 +357,7 @@ async function runOrchestrate() {
   Object.values(phaseAgentMap).forEach(r => setAgentState(r, 'active'));
 
   try {
-    const res = await fetch(`${API}/api/orchestrate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    const res = await fetch(`${API}/api/orchestrate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(apiBody({})) });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -368,7 +408,7 @@ async function runFix() {
   setLoading('btn-fix', true);
   setAgentState('reviewer', 'active');
   try {
-    const res = await fetch(`${API}/api/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ autoFix: true }) });
+    const res = await fetch(`${API}/api/review`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(apiBody({ autoFix: true })) });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     setAgentState('reviewer', data.passed ? 'done' : 'fail');
@@ -394,7 +434,7 @@ async function runSecurity() {
   setLoading('btn-security', true);
   setAgentState('security', 'active');
   try {
-    const res = await fetch(`${API}/api/orchestrate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ phases: ['security'] }) });
+    const res = await fetch(`${API}/api/orchestrate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(apiBody({ phases: ['security'] })) });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -421,7 +461,7 @@ async function loadHistory() {
   clearPanels(); resetAgents();
   setLoading('btn-history', true);
   try {
-    const res = await fetch(`${API}/api/history`);
+    const res = await fetch(`${API}/api/history${apiQuery()}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -452,7 +492,7 @@ async function loadTrend() {
   clearPanels(); resetAgents();
   setLoading('btn-trend', true);
   try {
-    const res = await fetch(`${API}/api/trend`);
+    const res = await fetch(`${API}/api/trend${apiQuery()}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
