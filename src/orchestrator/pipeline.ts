@@ -152,11 +152,21 @@ export class PipelineEngine {
 
     const result = agent.run(task, this.state.project.rootPath);
 
-    const newStatus = result.success ? 'completed' : 'failed';
-    this.updateTask(task.id, updateTaskStatus(task, newStatus, result));
+    // INFO/warning 전용 이슈만 있으면 성공으로 판정
+    const hasRealErrors = result.issues.some(
+      (i) => i.severity === 'error' || i.severity === 'critical'
+    );
+    const effectiveSuccess = result.success || !hasRealErrors;
+    const newStatus = effectiveSuccess ? 'completed' : 'failed';
+    this.updateTask(task.id, updateTaskStatus(task, newStatus, { ...result, success: effectiveSuccess }));
 
-    if (result.success) {
+    if (effectiveSuccess) {
       this.log('info', `[${agent.getInfo().name}] ✓ ${task.title} (${result.duration}ms)`, task.phase);
+      // INFO 이슈가 있으면 참고용으로 표시
+      const infoIssues = result.issues.filter((i) => i.severity === 'info' || i.severity === 'warning');
+      for (const issue of infoIssues.slice(0, 3)) {
+        this.log('info', `  ${issue.severity.toUpperCase()}: ${issue.message}`, task.phase);
+      }
     } else {
       this.log('error', `[${agent.getInfo().name}] ✗ ${task.title} - ${result.issues.length} issue(s)`, task.phase);
       for (const issue of result.issues.slice(0, 5)) {

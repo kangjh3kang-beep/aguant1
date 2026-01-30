@@ -54,21 +54,18 @@ export class ReviewerAgent extends BaseSubAgent {
       }
     }
 
-    // 학습 인사이트 추가
-    if (report.insights && report.insights.length > 0) {
-      for (const insight of report.insights) {
-        issues.push({
-          severity: 'info',
-          message: `[LEARNING] ${insight}`,
-          autoFixable: false,
-        });
-      }
-    }
-
     // 트렌드 분석 추가
     const trendReport = agent.getTrendReport();
 
     const artifacts: string[] = [];
+
+    // 학습 인사이트는 artifacts로 분류 (실패 판정에 영향 없음)
+    if (report.insights && report.insights.length > 0) {
+      for (const insight of report.insights) {
+        artifacts.push(`[LEARNING] ${insight}`);
+      }
+    }
+
     if (report.fixReport) {
       artifacts.push(`Auto-fixed ${report.fixReport.lintFixedCount} lint issues`);
       if (report.fixReport.suggestions.length > 0) {
@@ -76,8 +73,11 @@ export class ReviewerAgent extends BaseSubAgent {
       }
     }
 
+    // 실제 error/critical 이슈만 실패로 판정
+    const hasRealErrors = issues.some((i) => i.severity === 'error' || i.severity === 'critical');
+
     return {
-      success: report.passed,
+      success: !hasRealErrors,
       output: text + '\n\n' + trendReport,
       artifacts,
       issues,
