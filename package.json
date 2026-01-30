@@ -4,7 +4,8 @@
   "description": "자동 코드리뷰 에이전트 - 컴파일, 린트, 테스트를 자동으로 수행하여 완벽한 코드 검증을 제공합니다",
   "main": "dist/index.js",
   "bin": {
-    "ag-review": "dist/cli.js"
+    "ag-review": "dist/cli.js",
+    "ag-review-init": "dist/init.js"
   },
   "scripts": {
     "build": "tsc",
