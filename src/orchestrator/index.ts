@@ -22,7 +22,7 @@ export type { AICodeRequest, AICodeResponse } from './ai-provider';
 export { PromptEnhancer } from './prompt-enhancer';
 export type { EnhancedPrompt, PromptQualityScore } from './prompt-enhancer';
 export { AutonomousLoop, DEFAULT_AUTONOMOUS_CONFIG } from './autonomous-loop';
-export type { AutonomousConfig, AgentFeedback, LoopState, LoopSummary, FixAttempt } from './autonomous-loop';
+export type { AutonomousConfig, AgentFeedback, LoopState, LoopSummary, FixAttempt, SystemAnalysis, RootCause } from './autonomous-loop';
 
 export type {
   ProjectSpec,
