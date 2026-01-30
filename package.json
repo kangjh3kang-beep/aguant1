@@ -1,6 +1,6 @@
 {
   "name": "@antigravity/code-review-agent",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "자동 코드리뷰 에이전트 - 컴파일, 린트, 테스트를 자동으로 수행하여 완벽한 코드 검증을 제공합니다",
   "main": "dist/index.js",
   "bin": {
@@ -15,7 +15,8 @@
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
     "review": "ts-node src/cli.ts review",
-    "review:full": "ts-node src/cli.ts review --compile --lint --test"
+    "review:full": "ts-node src/cli.ts review --compile --lint --test",
+    "prepare": "npm run build"
   },
   "keywords": [
     "code-review",
