@@ -19,6 +19,8 @@ export { BrowserAgent } from './sub-agents/browser-agent';
 export { DeployerAgent } from './sub-agents/deployer-agent';
 export { generateCode, autoDetectProvider, loadAPIKeysFromEnv, extractCode } from './ai-provider';
 export type { AICodeRequest, AICodeResponse } from './ai-provider';
+export { AutonomousLoop, DEFAULT_AUTONOMOUS_CONFIG } from './autonomous-loop';
+export type { AutonomousConfig, AgentFeedback, LoopState, LoopSummary, FixAttempt } from './autonomous-loop';
 
 export type {
   ProjectSpec,

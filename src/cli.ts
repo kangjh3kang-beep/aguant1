@@ -13,6 +13,7 @@ import { loadConfig } from './utils/config-loader';
 import { runProcess } from './utils/process-runner';
 import { loadHistory, analyzeTrend, formatTrendReport } from './utils/review-history';
 import { Orchestrator } from './orchestrator';
+import { AutonomousLoop } from './orchestrator/autonomous-loop';
 import { TaskPhase } from './orchestrator/types';
 
 const program = new Command();
@@ -286,6 +287,50 @@ program
       config.pipeline.parallel = options.parallel !== false;
 
       const state = orchestrator.run();
+
+      if (options.json) {
+        console.log(JSON.stringify(state, null, 2));
+      }
+
+      process.exit(state.status === 'completed' ? 0 : 1);
+    } catch (err: unknown) {
+      console.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(2);
+    }
+  });
+
+// ─── autonomous (자율 반복 루프) ─────────────────────────
+program
+  .command('autonomous')
+  .alias('auto')
+  .description('자율 반복 루프 실행 (코딩→리뷰→수정→테스트→보안 자동 반복, 프로덕션까지)')
+  .option('-p, --path <path>', '프로젝트 경로', process.cwd())
+  .option('--max-cycles <n>', '최대 자기수정 사이클 수', '5')
+  .option('--phases <phases>', '실행할 단계 (쉼표 구분)')
+  .option('--no-pause', '인간 개입 필요시에도 중단하지 않음')
+  .option('--json', 'JSON 형식으로 출력', false)
+  .action((options) => {
+    try {
+      const projectPath = path.resolve(options.path);
+      const allPhases: TaskPhase[] = ['plan', 'code', 'review', 'test', 'security', 'browser', 'deploy'];
+      const phases: TaskPhase[] = options.phases
+        ? options.phases.split(',').map((p: string) => p.trim() as TaskPhase).filter((p: TaskPhase) => allPhases.includes(p))
+        : allPhases;
+
+      // 프로젝트 자동 감지
+      const orchestrator = Orchestrator.quickStart(projectPath);
+      const config = orchestrator.getConfig();
+
+      const loop = new AutonomousLoop(
+        config.project,
+        { ...config.pipeline, phases },
+        {
+          maxHealingCycles: parseInt(options.maxCycles, 10) || 5,
+          pauseOnHumanNeeded: options.pause !== false,
+        },
+      );
+
+      const state = loop.run();
 
       if (options.json) {
         console.log(JSON.stringify(state, null, 2));
