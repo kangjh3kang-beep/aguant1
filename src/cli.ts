@@ -8,6 +8,8 @@ import { ReviewStage } from './types';
 import { loadConfig } from './utils/config-loader';
 import { runProcess } from './utils/process-runner';
 import { loadHistory, analyzeTrend, formatTrendReport } from './utils/review-history';
+import { Orchestrator } from './orchestrator';
+import { TaskPhase } from './orchestrator/types';
 
 const program = new Command();
 
@@ -245,6 +247,78 @@ program
       console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(2);
     }
+  });
+
+// ─── orchestrate ──────────────────────────────────────────
+program
+  .command('orchestrate')
+  .description('전체 파이프라인 오케스트레이션 실행 (기획→개발→리뷰→테스트→보안→브라우저→배포)')
+  .option('-p, --path <path>', '프로젝트 경로', process.cwd())
+  .option('--phases <phases>', '실행할 단계 (쉼표 구분: plan,code,review,test,security,browser,deploy)')
+  .option('--no-parallel', '병렬 실행 비활성화')
+  .option('--fail-fast', '첫 실패 시 중단', false)
+  .option('--max-iterations <n>', '최대 반복 횟수', '3')
+  .option('--human-gates <phases>', '인간 승인 필요 단계 (쉼표 구분)')
+  .option('--json', 'JSON 형식으로 출력', false)
+  .action((options) => {
+    try {
+      const projectPath = path.resolve(options.path);
+      const allPhases: TaskPhase[] = ['plan', 'code', 'review', 'test', 'security', 'browser', 'deploy'];
+      const phases: TaskPhase[] = options.phases
+        ? options.phases.split(',').map((p: string) => p.trim() as TaskPhase).filter((p: TaskPhase) => allPhases.includes(p))
+        : allPhases;
+      const humanGates: TaskPhase[] = options.humanGates
+        ? options.humanGates.split(',').map((p: string) => p.trim() as TaskPhase)
+        : [];
+
+      const orchestrator = Orchestrator.quickStart(projectPath);
+
+      // 설정 오버라이드
+      const config = orchestrator.getConfig();
+      config.pipeline.phases = phases;
+      config.pipeline.failFast = options.failFast;
+      config.pipeline.maxIterations = parseInt(options.maxIterations, 10) || 3;
+      config.pipeline.humanGates = humanGates;
+      config.pipeline.parallel = options.parallel !== false;
+
+      const state = orchestrator.run();
+
+      if (options.json) {
+        console.log(JSON.stringify(state, null, 2));
+      }
+
+      process.exit(state.status === 'completed' ? 0 : 1);
+    } catch (err: unknown) {
+      console.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(2);
+    }
+  });
+
+// ─── team ─────────────────────────────────────────────────
+program
+  .command('team')
+  .description('에이전트 팀 상태를 표시합니다')
+  .action(() => {
+    console.log('');
+    console.log('╔══════════════════════════════════════════════╗');
+    console.log('║   ANTIGRAVITY AUTONOMOUS CODING TEAM         ║');
+    console.log('╚══════════════════════════════════════════════╝');
+    console.log('');
+    console.log('  [1] Planner Agent      - 시스템 아키텍처 설계, 태스크 분해');
+    console.log('  [2] Coder Agent        - AI 기반 코드 생성, 파일 작성');
+    console.log('  [3] Reviewer Agent     - 컴파일/린트/테스트 자동 코드리뷰');
+    console.log('  [4] Tester Agent       - 단위/통합/E2E 테스트 실행');
+    console.log('  [5] Security Agent     - 보안 감사, 취약점 분석, 시크릿 스캔');
+    console.log('  [6] Browser Agent      - 스크린샷 기반 UI 검증, 접근성 검사');
+    console.log('  [7] Deployer Agent     - 빌드, Docker, Vercel, 클라우드 배포');
+    console.log('');
+    console.log('  Pipeline: Plan → Code → Review → Test → Security → Browser → Deploy');
+    console.log('');
+    console.log('  Usage:');
+    console.log('    ag-review orchestrate              전체 파이프라인 실행');
+    console.log('    ag-review orchestrate --phases review,test,security  특정 단계만 실행');
+    console.log('    ag-review orchestrate --fail-fast   첫 실패 시 중단');
+    console.log('');
   });
 
 // ─── update ────────────────────────────────────────────────
