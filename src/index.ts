@@ -15,6 +15,14 @@ export { loadConfig, validateConfig, findConfigFile } from './utils/config-loade
 export { getChangedFiles, filterByExtension, getCurrentBranch, isGitRepo } from './utils/git-diff';
 export { runProcess, validateCommand, validateProjectPath } from './utils/process-runner';
 export {
+  loadHistory,
+  saveToHistory,
+  compareWithPrevious,
+  analyzeTrend,
+  formatTrendReport,
+} from './utils/review-history';
+export type { HistoryEntry, ReviewHistory, TrendAnalysis } from './utils/review-history';
+export {
   ReviewIssue,
   ReviewReport,
   StageResult,

@@ -83,6 +83,15 @@ export function formatReportAsText(report: ReviewReport): string {
     lines.push(`  Changed files: ${report.changedFiles.length}`);
   }
 
+  // 학습 인사이트
+  if (report.insights && report.insights.length > 0) {
+    lines.push('[LEARNING INSIGHTS]');
+    for (const insight of report.insights) {
+      lines.push(`  ${insight}`);
+    }
+    lines.push('');
+  }
+
   lines.push('----------------------------------------');
   lines.push(`  Result:   ${report.passed ? 'ALL CHECKS PASSED' : 'REVIEW FAILED'}`);
   lines.push(`  Errors:   ${report.errorCount}`);

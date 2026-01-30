@@ -38,6 +38,7 @@ export interface ReviewReport {
   fixReport?: FixReport;
   gitBranch?: string;
   changedFiles?: string[];
+  insights?: string[];
 }
 
 export interface AgentConfig {

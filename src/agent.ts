@@ -7,6 +7,7 @@ import { generateReport } from './report-generator';
 import { logHeader, logStageStart, logStageResult, logIssue, logSummary } from './utils/logger';
 import { validateProjectPath } from './utils/process-runner';
 import { getChangedFiles, filterByExtension, getCurrentBranch, isGitRepo } from './utils/git-diff';
+import { saveToHistory, compareWithPrevious, analyzeTrend, formatTrendReport } from './utils/review-history';
 
 type StageExecutor = (projectPath: string, command?: string) => StageResult;
 
@@ -170,6 +171,9 @@ export class CodeReviewAgent {
       logSummary(report.passed, report.errorCount, report.warningCount, report.duration);
     }
 
+    // 학습 루프: 히스토리 저장 및 비교 분석
+    this.learnFromResult(report, verbose);
+
     return report;
   }
 
@@ -227,6 +231,50 @@ export class CodeReviewAgent {
       suggestions,
       duration: Date.now() - start,
     };
+  }
+
+  /**
+   * 학습 루프: 결과를 히스토리에 저장하고 이전 결과와 비교합니다.
+   */
+  private learnFromResult(report: ReviewReport, verbose?: boolean): void {
+    try {
+      // 이전 결과와 비교 분석
+      const insights = compareWithPrevious(report.projectPath, report);
+
+      // 히스토리에 저장
+      saveToHistory(report.projectPath, report);
+
+      // 비교 인사이트 리포트에 첨부
+      report.insights = insights;
+
+      if (verbose && insights.length > 0) {
+        console.log('\n[LEARNING] Comparison with previous run:');
+        for (const insight of insights) {
+          console.log(`  ${insight}`);
+        }
+        console.log('');
+      }
+    } catch {
+      // 학습 실패는 리뷰 결과에 영향을 주지 않음
+      if (verbose) {
+        console.log('\n[LEARNING] Could not save history (non-critical).\n');
+      }
+    }
+  }
+
+  /**
+   * 프로젝트의 트렌드 분석 결과를 반환합니다.
+   */
+  getTrend(): ReturnType<typeof analyzeTrend> {
+    return analyzeTrend(this.config.projectPath);
+  }
+
+  /**
+   * 트렌드 분석 리포트를 포맷된 텍스트로 반환합니다.
+   */
+  getTrendReport(): string {
+    const trend = this.getTrend();
+    return formatTrendReport(trend);
   }
 
   /**

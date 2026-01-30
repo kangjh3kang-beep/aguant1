@@ -70,6 +70,31 @@ jest.mock('./utils/logger', () => ({
   logSummary: jest.fn(),
 }));
 
+// 학습 루프 모킹
+jest.mock('./utils/review-history', () => ({
+  saveToHistory: jest.fn().mockReturnValue({ id: 'test-id' }),
+  compareWithPrevious: jest.fn().mockReturnValue([
+    'Errors reduced: 5 -> 0 (5 fixed)',
+  ]),
+  analyzeTrend: jest.fn().mockReturnValue({
+    totalRuns: 3,
+    passRate: 67,
+    errorTrend: 'improving',
+    warningTrend: 'stable',
+    durationTrend: 'stable',
+    avgErrors: 3,
+    avgWarnings: 1,
+    avgDuration: 500,
+    recentErrors: 1,
+    recentWarnings: 1,
+    recentDuration: 500,
+    recurringIssues: [],
+    improvements: ['Errors: 5 -> 0'],
+    regressions: [],
+  }),
+  formatTrendReport: jest.fn().mockReturnValue('Trend Report Text'),
+}));
+
 describe('CodeReviewAgent', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -203,5 +228,51 @@ describe('CodeReviewAgent', () => {
     const agent = new CodeReviewAgent({ projectPath: '/test' });
     const config = agent.getConfig();
     expect(config.diffOnly).toBe(false);
+  });
+
+  it('should save to history after run (learning loop)', () => {
+    const { saveToHistory } = require('./utils/review-history');
+
+    const agent = new CodeReviewAgent({ projectPath: '/test' });
+    agent.run();
+
+    expect(saveToHistory).toHaveBeenCalledWith('/test', expect.any(Object));
+  });
+
+  it('should include insights in report from learning loop', () => {
+    const agent = new CodeReviewAgent({ projectPath: '/test' });
+    const report = agent.run();
+
+    expect(report.insights).toBeDefined();
+    expect(report.insights).toContain('Errors reduced: 5 -> 0 (5 fixed)');
+  });
+
+  it('should return trend analysis via getTrend', () => {
+    const agent = new CodeReviewAgent({ projectPath: '/test' });
+    const trend = agent.getTrend();
+
+    expect(trend.totalRuns).toBe(3);
+    expect(trend.passRate).toBe(67);
+    expect(trend.errorTrend).toBe('improving');
+  });
+
+  it('should return formatted trend report via getTrendReport', () => {
+    const agent = new CodeReviewAgent({ projectPath: '/test' });
+    const text = agent.getTrendReport();
+
+    expect(text).toBe('Trend Report Text');
+  });
+
+  it('should not fail if learning loop throws', () => {
+    const { saveToHistory } = require('./utils/review-history');
+    saveToHistory.mockImplementationOnce(() => {
+      throw new Error('Disk full');
+    });
+
+    const agent = new CodeReviewAgent({ projectPath: '/test' });
+    // Should not throw - learning failures are non-critical
+    const report = agent.run();
+
+    expect(report.passed).toBe(true);
   });
 });

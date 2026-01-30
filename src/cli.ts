@@ -7,6 +7,7 @@ import { formatReportAsText, formatReportAsJson } from './report-generator';
 import { ReviewStage } from './types';
 import { loadConfig } from './utils/config-loader';
 import { runProcess } from './utils/process-runner';
+import { loadHistory, analyzeTrend, formatTrendReport } from './utils/review-history';
 
 const program = new Command();
 
@@ -163,6 +164,85 @@ program
       process.exit(report.passed ? 0 : 1);
     } catch (err: unknown) {
       console.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(2);
+    }
+  });
+
+// ─── history ──────────────────────────────────────────────
+program
+  .command('history')
+  .description('리뷰 히스토리를 조회합니다')
+  .option('-p, --path <path>', '프로젝트 경로', process.cwd())
+  .option('-n, --last <count>', '최근 N개 항목만 표시', '10')
+  .option('--json', 'JSON 형식으로 출력', false)
+  .action((options) => {
+    try {
+      const projectPath = path.resolve(options.path);
+      const history = loadHistory(projectPath);
+      const count = parseInt(options.last, 10) || 10;
+      const entries = history.entries.slice(-count);
+
+      if (options.json) {
+        console.log(JSON.stringify(entries, null, 2));
+        return;
+      }
+
+      if (entries.length === 0) {
+        console.log('\n  No review history found.');
+        console.log('  Run "ag-review review" to start recording.\n');
+        return;
+      }
+
+      console.log('\n========================================');
+      console.log('  Antigravity Review History');
+      console.log(`  Project: ${projectPath}`);
+      console.log(`  Showing last ${entries.length} of ${history.entries.length} runs`);
+      console.log('========================================\n');
+
+      for (const entry of entries) {
+        const status = entry.passed ? 'PASS' : 'FAIL';
+        const branch = entry.gitBranch ? ` [${entry.gitBranch}]` : '';
+        const date = new Date(entry.timestamp).toLocaleString();
+        console.log(`  ${date}${branch}  ${status}  errors:${entry.errorCount} warnings:${entry.warningCount}  (${entry.duration}ms)`);
+        for (const stage of entry.stages) {
+          console.log(`    [${stage.stage.toUpperCase()}] ${stage.status.toUpperCase()} - ${stage.issueCount} issue(s) (${stage.duration}ms)`);
+        }
+        if (entry.fixReport) {
+          console.log(`    [FIX] lint:${entry.fixReport.lintFixedCount} snapshot:${entry.fixReport.snapshotsUpdated} suggestions:${entry.fixReport.suggestionCount}`);
+        }
+        console.log('');
+      }
+    } catch (err: unknown) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(2);
+    }
+  });
+
+// ─── trend ────────────────────────────────────────────────
+program
+  .command('trend')
+  .description('리뷰 트렌드를 분석합니다 (개선/악화 추적)')
+  .option('-p, --path <path>', '프로젝트 경로', process.cwd())
+  .option('--json', 'JSON 형식으로 출력', false)
+  .action((options) => {
+    try {
+      const projectPath = path.resolve(options.path);
+      const trend = analyzeTrend(projectPath);
+
+      if (options.json) {
+        console.log(JSON.stringify(trend, null, 2));
+        return;
+      }
+
+      if (trend.totalRuns === 0) {
+        console.log('\n  No review history found.');
+        console.log('  Run "ag-review review" to start recording.\n');
+        return;
+      }
+
+      console.log('\n' + formatTrendReport(trend));
+    } catch (err: unknown) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(2);
     }
   });
