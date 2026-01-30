@@ -17,6 +17,8 @@ export { TesterAgent } from './sub-agents/tester-agent';
 export { SecurityAgent } from './sub-agents/security-agent';
 export { BrowserAgent } from './sub-agents/browser-agent';
 export { DeployerAgent } from './sub-agents/deployer-agent';
+export { generateCode, autoDetectProvider, loadAPIKeysFromEnv, extractCode } from './ai-provider';
+export type { AICodeRequest, AICodeResponse } from './ai-provider';
 
 export type {
   ProjectSpec,
