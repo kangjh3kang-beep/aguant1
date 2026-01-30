@@ -35,11 +35,20 @@ export function parseTestOutput(output: string): ReviewIssue[] {
     return parseTestTextOutput(output);
   }
 
+  // testResults가 배열인지 확인
+  if (!Array.isArray(jestResult.testResults)) {
+    return parseTestTextOutput(output);
+  }
+
   for (const suite of jestResult.testResults) {
+    // suite.testResults가 배열인지 확인 (일부 Jest 버전에서 누락될 수 있음)
+    if (!Array.isArray(suite.testResults)) {
+      continue;
+    }
     for (const test of suite.testResults) {
       if (test.status === 'failed') {
-        const testName = [...test.ancestorTitles, test.title].join(' > ');
-        const failureDetail = test.failureMessages.join('\n').slice(0, 500);
+        const testName = [...(test.ancestorTitles || []), test.title].join(' > ');
+        const failureDetail = (test.failureMessages || []).join('\n').slice(0, 500);
 
         issues.push({
           stage: 'test',
@@ -106,8 +115,12 @@ export function analyzeTest(
 
   let summary: string;
   try {
-    const parsed: JestJsonOutput = JSON.parse(output);
-    summary = `Tests: ${parsed.numPassedTests} passed, ${parsed.numFailedTests} failed, ${parsed.numTotalTests} total.`;
+    const parsed = JSON.parse(output);
+    if (parsed.numTotalTests != null) {
+      summary = `Tests: ${parsed.numPassedTests} passed, ${parsed.numFailedTests} failed, ${parsed.numTotalTests} total.`;
+    } else {
+      throw new Error('Not Jest JSON output');
+    }
   } catch {
     summary =
       status === 'pass'
