@@ -61,6 +61,28 @@ export function formatReportAsText(report: ReviewReport): string {
     lines.push('');
   }
 
+  // Auto-fix 결과
+  if (report.fixReport) {
+    lines.push('[AUTO-FIX]');
+    lines.push(`  Lint fixes applied: ${report.fixReport.lintFixedCount}`);
+    lines.push(`  Snapshots updated:  ${report.fixReport.snapshotsUpdated}`);
+    if (report.fixReport.suggestions.length > 0) {
+      lines.push('  Suggestions:');
+      for (const s of report.fixReport.suggestions.slice(0, 10)) {
+        lines.push(`    - ${s}`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Git 정보
+  if (report.gitBranch) {
+    lines.push(`  Branch: ${report.gitBranch}`);
+  }
+  if (report.changedFiles && report.changedFiles.length > 0) {
+    lines.push(`  Changed files: ${report.changedFiles.length}`);
+  }
+
   lines.push('----------------------------------------');
   lines.push(`  Result:   ${report.passed ? 'ALL CHECKS PASSED' : 'REVIEW FAILED'}`);
   lines.push(`  Errors:   ${report.errorCount}`);

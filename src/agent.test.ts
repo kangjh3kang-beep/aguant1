@@ -31,6 +31,36 @@ jest.mock('./analyzers/test-analyzer', () => ({
   }),
 }));
 
+jest.mock('./analyzers/auto-fixer', () => ({
+  autoFixLint: jest.fn().mockReturnValue({
+    stage: 'fix',
+    fixedCount: 2,
+    issues: [],
+    duration: 100,
+    summary: 'Fixed 2 issues.',
+  }),
+  suggestCompileFixes: jest.fn().mockReturnValue([]),
+  updateTestSnapshots: jest.fn().mockReturnValue({
+    stage: 'fix',
+    fixedCount: 0,
+    issues: [],
+    duration: 50,
+    summary: 'No snapshots updated.',
+  }),
+}));
+
+jest.mock('./utils/process-runner', () => ({
+  ...jest.requireActual('./utils/process-runner'),
+  validateProjectPath: jest.fn().mockReturnValue({ valid: true }),
+}));
+
+jest.mock('./utils/git-diff', () => ({
+  isGitRepo: jest.fn().mockReturnValue(false),
+  getCurrentBranch: jest.fn().mockReturnValue(null),
+  getChangedFiles: jest.fn().mockReturnValue([]),
+  filterByExtension: jest.fn().mockReturnValue([]),
+}));
+
 // Logger 모킹 (콘솔 출력 억제)
 jest.mock('./utils/logger', () => ({
   logHeader: jest.fn(),
@@ -121,5 +151,57 @@ describe('CodeReviewAgent', () => {
     const report = agent.run();
 
     expect(report.duration).toBe(600); // 100 + 200 + 300
+  });
+
+  it('should handle stage crash gracefully', () => {
+    const { analyzeCompile } = require('./analyzers/compile-analyzer');
+    analyzeCompile.mockImplementationOnce(() => {
+      throw new Error('Unexpected crash');
+    });
+
+    const agent = new CodeReviewAgent({
+      projectPath: '/test',
+      stages: ['compile'],
+    });
+    const report = agent.run();
+
+    expect(report.passed).toBe(false);
+    expect(report.stages[0].status).toBe('fail');
+    expect(report.stages[0].issues[0].message).toContain('Stage crashed');
+  });
+
+  it('should fail for invalid project path', () => {
+    const { validateProjectPath } = require('./utils/process-runner');
+    validateProjectPath.mockReturnValueOnce({ valid: false, reason: 'Path does not exist' });
+
+    const agent = new CodeReviewAgent({ projectPath: '/nonexistent' });
+    const report = agent.run();
+
+    expect(report.passed).toBe(false);
+    expect(report.stages[0].issues[0].message).toContain('Path does not exist');
+  });
+
+  it('should include fixReport when autoFix is enabled', () => {
+    const agent = new CodeReviewAgent({
+      projectPath: '/test',
+      stages: ['lint'],
+      autoFix: true,
+    });
+    const report = agent.run();
+
+    expect(report.fixReport).toBeDefined();
+    expect(report.fixReport?.lintFixedCount).toBeDefined();
+  });
+
+  it('should set default autoFix to false', () => {
+    const agent = new CodeReviewAgent({ projectPath: '/test' });
+    const config = agent.getConfig();
+    expect(config.autoFix).toBe(false);
+  });
+
+  it('should set default diffOnly to false', () => {
+    const agent = new CodeReviewAgent({ projectPath: '/test' });
+    const config = agent.getConfig();
+    expect(config.diffOnly).toBe(false);
   });
 });

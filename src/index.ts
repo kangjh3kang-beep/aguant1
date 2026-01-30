@@ -1,8 +1,8 @@
 /**
  * @antigravity/code-review-agent
  *
- * 자동 코드리뷰 에이전트 - 컴파일, 린트, 테스트를 자동으로 수행하여
- * 완벽한 코드 검증을 제공합니다.
+ * 자동 코드리뷰 에이전트 - 컴파일, 린트, 테스트를 자동으로 수행하고
+ * 자동 수정 및 Git diff 기반 프리뷰까지 완벽한 코드 검증을 제공합니다.
  */
 
 export { CodeReviewAgent } from './agent';
@@ -10,11 +10,16 @@ export { generateReport, formatReportAsText, formatReportAsJson } from './report
 export { analyzeCompile, parseCompileOutput } from './analyzers/compile-analyzer';
 export { analyzeLint, parseLintOutput, parseLintTextOutput } from './analyzers/lint-analyzer';
 export { analyzeTest, parseTestOutput, parseTestTextOutput } from './analyzers/test-analyzer';
+export { autoFixLint, suggestCompileFixes, updateTestSnapshots } from './analyzers/auto-fixer';
+export { loadConfig, validateConfig, findConfigFile } from './utils/config-loader';
+export { getChangedFiles, filterByExtension, getCurrentBranch, isGitRepo } from './utils/git-diff';
+export { runProcess, validateCommand, validateProjectPath } from './utils/process-runner';
 export {
   ReviewIssue,
   ReviewReport,
   StageResult,
   AgentConfig,
+  FixReport,
   Severity,
   ReviewStage,
   StageStatus,

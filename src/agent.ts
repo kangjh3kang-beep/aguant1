@@ -1,9 +1,12 @@
-import { AgentConfig, ReviewReport, ReviewStage, StageResult, DEFAULT_CONFIG } from './types';
+import { AgentConfig, ReviewReport, ReviewStage, StageResult, FixReport, DEFAULT_CONFIG } from './types';
 import { analyzeCompile } from './analyzers/compile-analyzer';
 import { analyzeLint } from './analyzers/lint-analyzer';
 import { analyzeTest } from './analyzers/test-analyzer';
+import { autoFixLint, suggestCompileFixes, updateTestSnapshots } from './analyzers/auto-fixer';
 import { generateReport } from './report-generator';
 import { logHeader, logStageStart, logStageResult, logIssue, logSummary } from './utils/logger';
+import { validateProjectPath } from './utils/process-runner';
+import { getChangedFiles, filterByExtension, getCurrentBranch, isGitRepo } from './utils/git-diff';
 
 type StageExecutor = (projectPath: string, command?: string) => StageResult;
 
@@ -17,7 +20,7 @@ const STAGE_EXECUTORS: Record<ReviewStage, StageExecutor> = {
  * Antigravity 코드리뷰 에이전트
  *
  * 프로젝트에 대해 컴파일 -> 린트 -> 테스트 파이프라인을 자동 실행하고
- * 통합 리뷰 리포트를 생성합니다.
+ * 자동 수정 및 통합 리뷰 리포트를 생성합니다.
  */
 export class CodeReviewAgent {
   private config: AgentConfig;
@@ -34,10 +37,61 @@ export class CodeReviewAgent {
    * 전체 코드리뷰 파이프라인을 실행합니다.
    */
   run(): ReviewReport {
-    const { projectPath, stages, verbose, failFast } = this.config;
+    const { projectPath, stages, verbose, failFast, autoFix, diffOnly, baseBranch } = this.config;
+
+    // 프로젝트 경로 검증
+    const pathCheck = validateProjectPath(projectPath);
+    if (!pathCheck.valid) {
+      return generateReport(projectPath, [{
+        stage: 'compile',
+        status: 'fail',
+        issues: [{
+          stage: 'compile',
+          severity: 'error',
+          file: projectPath,
+          message: pathCheck.reason ?? 'Invalid project path',
+        }],
+        duration: 0,
+        summary: pathCheck.reason ?? 'Invalid project path',
+      }]);
+    }
 
     if (verbose) {
       logHeader(projectPath);
+    }
+
+    // Git diff 기반 변경 파일 분석
+    let gitBranch: string | undefined;
+    let changedFiles: string[] | undefined;
+
+    if (diffOnly || baseBranch) {
+      if (isGitRepo(projectPath)) {
+        gitBranch = getCurrentBranch(projectPath) ?? undefined;
+        const diff = getChangedFiles(projectPath, { baseBranch });
+        const codeFiles = filterByExtension(diff, ['.ts', '.tsx', '.js', '.jsx']);
+        changedFiles = codeFiles.map((f) => f.path);
+
+        if (verbose && changedFiles.length > 0) {
+          console.log(`  Changed files (${changedFiles.length}):`);
+          for (const f of changedFiles.slice(0, 20)) {
+            console.log(`    - ${f}`);
+          }
+          if (changedFiles.length > 20) {
+            console.log(`    ... and ${changedFiles.length - 20} more`);
+          }
+          console.log('');
+        }
+
+        if (changedFiles.length === 0) {
+          if (verbose) {
+            console.log('  No changed files detected. Skipping review.\n');
+          }
+          const report = generateReport(projectPath, []);
+          report.gitBranch = gitBranch;
+          report.changedFiles = [];
+          return report;
+        }
+      }
     }
 
     const stageResults: StageResult[] = [];
@@ -47,7 +101,25 @@ export class CodeReviewAgent {
         logStageStart(stage);
       }
 
-      const result = this.executeStage(stage);
+      let result: StageResult;
+      try {
+        result = this.executeStage(stage);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        result = {
+          stage,
+          status: 'fail',
+          issues: [{
+            stage,
+            severity: 'error',
+            file: projectPath,
+            message: `Stage crashed: ${message}`,
+          }],
+          duration: 0,
+          summary: `Stage ${stage} crashed unexpectedly: ${message}`,
+        };
+      }
+
       stageResults.push(result);
 
       if (verbose) {
@@ -58,7 +130,6 @@ export class CodeReviewAgent {
       }
 
       if (failFast && result.status === 'fail') {
-        // 남은 스테이지를 skip 처리
         const remaining = stages.slice(stages.indexOf(stage) + 1);
         for (const skipped of remaining) {
           stageResults.push({
@@ -73,7 +144,27 @@ export class CodeReviewAgent {
       }
     }
 
+    // 자동 수정 실행
+    let fixReport: FixReport | undefined;
+    if (autoFix) {
+      fixReport = this.runAutoFix(stageResults);
+      if (verbose && fixReport) {
+        console.log('\n[AUTO-FIX] Results:');
+        console.log(`  Lint fixes applied: ${fixReport.lintFixedCount}`);
+        console.log(`  Snapshots updated:  ${fixReport.snapshotsUpdated}`);
+        if (fixReport.suggestions.length > 0) {
+          console.log('  Suggestions:');
+          for (const s of fixReport.suggestions.slice(0, 10)) {
+            console.log(`    - ${s}`);
+          }
+        }
+      }
+    }
+
     const report = generateReport(projectPath, stageResults);
+    report.fixReport = fixReport;
+    report.gitBranch = gitBranch;
+    report.changedFiles = changedFiles;
 
     if (verbose) {
       logSummary(report.passed, report.errorCount, report.warningCount, report.duration);
@@ -94,6 +185,48 @@ export class CodeReviewAgent {
     };
 
     return executor(this.config.projectPath, commandMap[stage]);
+  }
+
+  /**
+   * 자동 수정을 실행합니다.
+   */
+  private runAutoFix(stageResults: StageResult[]): FixReport {
+    const start = Date.now();
+    const suggestions: string[] = [];
+    let lintFixedCount = 0;
+    let snapshotsUpdated = false;
+
+    // 컴파일 에러 수정 제안
+    const compileResult = stageResults.find((r) => r.stage === 'compile');
+    if (compileResult && compileResult.status === 'fail') {
+      suggestions.push(...suggestCompileFixes(compileResult));
+    }
+
+    // 린트 자동 수정
+    const lintResult = stageResults.find((r) => r.stage === 'lint');
+    if (lintResult && lintResult.issues.length > 0) {
+      const fixResult = autoFixLint(this.config.projectPath, this.config.lintCommand);
+      lintFixedCount = fixResult.fixedCount;
+    }
+
+    // 테스트 스냅샷 업데이트
+    const testResult = stageResults.find((r) => r.stage === 'test');
+    if (testResult && testResult.status === 'fail') {
+      const hasSnapshotFailure = testResult.issues.some(
+        (i) => i.message.toLowerCase().includes('snapshot'),
+      );
+      if (hasSnapshotFailure) {
+        const snapResult = updateTestSnapshots(this.config.projectPath, this.config.testCommand);
+        snapshotsUpdated = snapResult.fixedCount > 0;
+      }
+    }
+
+    return {
+      lintFixedCount,
+      snapshotsUpdated,
+      suggestions,
+      duration: Date.now() - start,
+    };
   }
 
   /**

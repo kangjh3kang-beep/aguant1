@@ -35,6 +35,9 @@ export interface ReviewReport {
   infoCount: number;
   passed: boolean;
   duration: number; // ms
+  fixReport?: FixReport;
+  gitBranch?: string;
+  changedFiles?: string[];
 }
 
 export interface AgentConfig {
@@ -45,10 +48,22 @@ export interface AgentConfig {
   testCommand?: string;
   failFast?: boolean;
   verbose?: boolean;
+  autoFix?: boolean;
+  diffOnly?: boolean;
+  baseBranch?: string;
+}
+
+export interface FixReport {
+  lintFixedCount: number;
+  snapshotsUpdated: boolean;
+  suggestions: string[];
+  duration: number;
 }
 
 export const DEFAULT_CONFIG: Partial<AgentConfig> = {
   stages: ['compile', 'lint', 'test'],
   failFast: false,
   verbose: false,
+  autoFix: false,
+  diffOnly: false,
 };
