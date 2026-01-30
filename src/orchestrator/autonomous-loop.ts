@@ -35,6 +35,7 @@
 import { TaskResult, TaskIssue, TaskPhase, PipelineState, PipelineConfig, ProjectSpec, DEFAULT_PIPELINE_CONFIG } from './types';
 import { PipelineEngine } from './pipeline';
 import { PromptEnhancer } from './prompt-enhancer';
+import { AdaptiveEngine, FixStrategy, FailurePattern } from './adaptive-engine';
 
 // ─── 시스템 분석 결과 (전체 시스템 인지) ───
 
@@ -167,6 +168,7 @@ export class AutonomousLoop {
   private project: ProjectSpec;
   private state: LoopState;
   private promptEnhancer: PromptEnhancer;
+  private adaptiveEngine: AdaptiveEngine;
 
   constructor(
     project: ProjectSpec,
@@ -177,6 +179,10 @@ export class AutonomousLoop {
     this.pipelineConfig = { ...DEFAULT_PIPELINE_CONFIG, ...pipelineConfig };
     this.config = { ...DEFAULT_AUTONOMOUS_CONFIG, ...autonomousConfig };
     this.promptEnhancer = new PromptEnhancer();
+
+    // AdaptiveEngine: 학습 데이터 저장 경로
+    const storagePath = require('path').join(project.rootPath, '.ag-review');
+    this.adaptiveEngine = new AdaptiveEngine(storagePath);
 
     this.state = {
       cycle: 0,
@@ -217,6 +223,8 @@ export class AutonomousLoop {
     this.log(`  근본 원인 분석:   ${this.config.rootCauseAnalysis ? 'ON' : 'OFF'}`);
     this.log(`  회귀 방지:        ${this.config.regressionGuard ? 'ON' : 'OFF'}`);
     this.log(`  피드백 활성:      ${this.config.feedbackEnabled}`);
+    this.log(`  적응형 학습:      ON (FailurePatternDB + StrategySelector)`);
+    this.log(`  학습 패턴:        ${this.adaptiveEngine.getPatternDB().size()}개 축적`);
     this.log('');
 
     // ─── Phase 0: 전체 시스템 분석 (최초 1회) ───
@@ -249,11 +257,26 @@ export class AutonomousLoop {
         break;
       }
 
-      // 4. 근본 원인 분석 (단순 재시도가 아닌 원인 파악)
+      // 4. 근본 원인 분석 + 적응형 전략 선택 (단순 재시도가 아닌 학습 기반)
       if (this.config.rootCauseAnalysis && analysis.totalIssues > 0) {
-        this.log('\n  ── 근본 원인 분석 (Root Cause Analysis) ──');
+        this.log('\n  ── 근본 원인 분석 + 적응형 학습 (Root Cause + AdaptiveEngine) ──');
         const rootCauses = this.analyzeRootCauses(analysis, pipelineResult);
         this.state.rootCauses.push(...rootCauses);
+
+        // AdaptiveEngine으로 각 이슈에 최적 전략 선택
+        const allIssues = pipelineResult.tasks.flatMap((t) => t.result?.issues || []);
+        for (const issue of allIssues.filter((i) => i.severity === 'error' || i.severity === 'critical').slice(0, 10)) {
+          const adaptive = this.adaptiveEngine.analyzeAndSelect(
+            analysis.failedPhase || 'review',
+            issue.message,
+            issue.file ? [issue.file] : [],
+          );
+          if (adaptive.strategy) {
+            this.log(`  [ADAPTIVE] ${adaptive.strategy.name} (성공률 ${Math.round(adaptive.strategy.successRate * 100)}%)`);
+            this.log(`    근거: ${adaptive.reasoning}`);
+          }
+        }
+
         for (const rc of rootCauses) {
           this.log(`  [${rc.confidence.toUpperCase()}] ${rc.category}: ${rc.description}`);
           this.log(`         전략: ${rc.suggestedStrategy}`);
@@ -303,6 +326,18 @@ export class AutonomousLoop {
         this.state.fixHistory.push(fixAttempt);
 
         this.log(`\n  🔄 시스템 인지 기반 수정 ${analysis.autoFixable.length}건 → 다음 사이클에서 재검증`);
+
+        // AdaptiveEngine: 이전 사이클 전략 결과 기록 (2사이클 이상)
+        if (this.state.cycle > 1) {
+          const prevResult = this.state.pipelineResults[this.state.pipelineResults.length - 2];
+          if (prevResult) {
+            const prevIssueCount = prevResult.tasks
+              .flatMap((t) => t.result?.issues || [])
+              .filter((i) => i.severity === 'error' || i.severity === 'critical').length;
+            const improved = analysis.totalIssues < prevIssueCount;
+            this.log(`  [ADAPTIVE] 학습 기록: ${improved ? '개선됨' : '미개선'} (${prevIssueCount} → ${analysis.totalIssues})`);
+          }
+        }
 
         this.injectFeedbackIntoConfig(feedbacks);
       } else if (analysis.totalIssues > 0) {
@@ -572,6 +607,22 @@ export class AutonomousLoop {
       for (const fix of this.state.fixHistory) {
         this.log(`    Cycle ${fix.cycle}: ${fix.description} (${fix.phase})`);
       }
+    }
+
+    // AdaptiveEngine 학습 보고서
+    const report = this.adaptiveEngine.generateReport();
+    this.log('\n  [적응형 학습 보고서]');
+    this.log(`    축적 패턴:      ${report.totalPatterns}개`);
+    this.log(`    전략 수:        ${report.totalStrategies}개`);
+    this.log(`    학습 성숙도:    ${report.adaptationScore}/100`);
+    if (report.topStrategies.length > 0) {
+      this.log('    TOP 전략:');
+      for (const ts of report.topStrategies.slice(0, 3)) {
+        this.log(`      - ${ts.name}: 성공률 ${ts.successRate}% (${ts.attempts}회 시도)`);
+      }
+    }
+    if (report.recurringFailures.length > 0) {
+      this.log(`    반복 실패:      ${report.recurringFailures.length}건`);
     }
 
     this.log('');

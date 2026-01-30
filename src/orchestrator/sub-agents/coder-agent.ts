@@ -17,6 +17,7 @@ import { execSync } from 'child_process';
 import { Task, TaskResult } from '../types';
 import { BaseSubAgent } from './base-agent';
 import { generateCode, autoDetectProvider, AICodeResponse } from '../ai-provider';
+import { CodeGenV2, DEFAULT_CODEGEN_V2_CONFIG } from '../code-gen-v2';
 
 export class CoderAgent extends BaseSubAgent {
   protected getAgentName(): string {
@@ -50,6 +51,22 @@ export class CoderAgent extends BaseSubAgent {
     outputs.push('[CODER] ── Prompt Enhancement Applied ──');
     outputs.push(`[CODER] 원본 설명: ${task.description.slice(0, 80)}${task.description.length > 80 ? '...' : ''}`);
     outputs.push(`[CODER] 강화된 설명 길이: ${enhanced.enhancedDescription.length}자 (${Math.round(enhanced.enhancedDescription.length / Math.max(task.description.length, 1) * 100)}% 확장)`);
+
+    // ── CodeGenV2: 자동 검증 + TDD + 폴백 체인 ──
+    const codeGenV2 = new CodeGenV2(projectPath);
+    outputs.push('[CODER] ── CodeGenV2 Pipeline Active ──');
+    const providers = codeGenV2.getAvailableProviders();
+    const availableCount = providers.filter((p) => p.available).length;
+    outputs.push(`[CODER] FallbackChain: ${availableCount}/${providers.length} AI 프로바이더 사용 가능`);
+    for (const p of providers) {
+      outputs.push(`[CODER]   ${p.provider}: ${p.available ? '✓' : '✗'} (${p.envKey})`);
+    }
+
+    // ── SharedKnowledge 컨텍스트 주입 ──
+    const sharedCtx = this.getSharedContext(task);
+    if (sharedCtx) {
+      outputs.push(`[CODER] SharedKnowledge 컨텍스트 ${sharedCtx.length}자 주입됨`);
+    }
 
     // AI 프로바이더 설정 (config에서 or 환경변수 자동 감지)
     const aiConfig = this.config.aiProvider || autoDetectProvider();
@@ -90,6 +107,72 @@ export class CoderAgent extends BaseSubAgent {
       outputs.push(...codeResult.logs);
       issues.push(...codeResult.issues);
       artifacts.push(...codeResult.artifacts);
+
+      // 6. CodeGenV2 자동 검증 (생성된 코드 품질 검사)
+      if (codeResult.artifacts.length > 0) {
+        outputs.push('[CODER] ── CodeGenV2 Auto-Validation ──');
+        for (const artifact of codeResult.artifacts) {
+          const filePath = path.resolve(projectPath, artifact);
+          if (fs.existsSync(filePath)) {
+            try {
+              const code = fs.readFileSync(filePath, 'utf-8');
+              const result = codeGenV2.validateAndScore(code, artifact);
+
+              outputs.push(`[CODER] 검증: ${artifact}`);
+              outputs.push(`[CODER]   품질 점수: ${result.metrics.qualityScore}/100`);
+              outputs.push(`[CODER]   복잡도: ${result.metrics.complexityScore}/100`);
+              outputs.push(`[CODER]   최대 함수 길이: ${result.metrics.maxFunctionLength}줄`);
+              outputs.push(`[CODER]   타입 어노테이션: ${result.metrics.hasTypeAnnotations ? '✓' : '✗'}`);
+              outputs.push(`[CODER]   에러 핸들링: ${result.metrics.hasErrorHandling ? '✓' : '✗'}`);
+              outputs.push(`[CODER]   품질 게이트: ${result.gateResult.passed ? '✓ PASS' : '✗ FAIL'}`);
+
+              if (!result.gateResult.passed) {
+                for (const reason of result.gateResult.reasons) {
+                  issues.push(this.createIssue('warning', `[CodeGenV2] ${artifact}: ${reason}`, { file: artifact }));
+                }
+              }
+
+              for (const v of result.validations) {
+                for (const e of v.errors) {
+                  issues.push(this.createIssue('error', `[${v.stage}] ${artifact}: ${e}`, { file: artifact }));
+                }
+              }
+
+              // KB에 코드 생성 결과 인사이트 저장
+              this.addInsight(
+                'code-pattern',
+                result.overallValid ? 'info' : 'medium',
+                `코드 생성 검증: ${artifact}`,
+                `품질 ${result.metrics.qualityScore}/100, 복잡도 ${result.metrics.complexityScore}/100, 게이트 ${result.gateResult.passed ? 'PASS' : 'FAIL'}`,
+                task,
+                [artifact],
+                { qualityScore: result.metrics.qualityScore, complexityScore: result.metrics.complexityScore },
+              );
+            } catch {
+              outputs.push(`[CODER]   ${artifact}: 검증 스킵 (파일 읽기 실패)`);
+            }
+          }
+        }
+      }
+    }
+
+    // 7. TDD 테스트 스켈레톤 생성 (TDD 모드)
+    if (codeGenV2.getConfig().tddMode) {
+      outputs.push('[CODER] ── TDD: Test-First Pipeline ──');
+      const lang = fs.existsSync(path.join(projectPath, 'tsconfig.json')) ? 'typescript'
+        : fs.existsSync(path.join(projectPath, 'requirements.txt')) ? 'python'
+        : 'typescript';
+      const testCode = codeGenV2.generateTestFirst(task.title, task.description, lang);
+      if (testCode) {
+        const testDir = path.join(projectPath, '.ag-review', 'generated');
+        if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+        const ext = lang === 'python' ? '.py' : '.test.ts';
+        const testFile = path.join(testDir, `${task.title.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 30)}${ext}`);
+        fs.writeFileSync(testFile, testCode, 'utf-8');
+        const relPath = path.relative(projectPath, testFile);
+        artifacts.push(relPath);
+        outputs.push(`[CODER] TDD 테스트 생성: ${relPath}`);
+      }
     }
 
     return {

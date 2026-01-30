@@ -4,15 +4,26 @@
  * ━━━ 프롬프트 강화 파이프라인 ━━━
  *  모든 서브에이전트가 PromptEnhancer를 통해 태스크를 자동으로 강화합니다.
  *  간단한 명령도 전문가급 상세 지시로 자동 확장됩니다.
+ *
+ * ━━━ 지능 공유 시스템 (Phase 1) ━━━
+ *  SharedKnowledgeBase를 통해 에이전트 간 인사이트를 축적하고 참조합니다.
+ *  ContextChain을 통해 이전 Phase 결과가 다음 Phase에 자동 주입됩니다.
+ *  EventBus를 통해 실시간 이벤트를 발행/구독합니다.
  */
 
 import { Task, TaskResult, TaskIssue, SubAgentConfig, SubAgentInfo, AgentRole, AgentStatus } from '../types';
 import { PromptEnhancer, EnhancedPrompt } from '../prompt-enhancer';
+import { SharedKnowledgeBase, EventBus, ContextChain, InsightCategory, InsightSeverity } from '../shared-knowledge';
 
 export abstract class BaseSubAgent {
   protected config: SubAgentConfig;
   protected info: SubAgentInfo;
   protected promptEnhancer: PromptEnhancer;
+
+  // ── 지능 공유 시스템 ──
+  protected knowledgeBase: SharedKnowledgeBase | null = null;
+  protected eventBus: EventBus | null = null;
+  protected contextChain: ContextChain | null = null;
 
   constructor(config: SubAgentConfig) {
     this.config = config;
@@ -39,12 +50,25 @@ export abstract class BaseSubAgent {
   protected abstract executeTask(task: Task, projectPath: string): TaskResult;
 
   /**
+   * 지능 공유 시스템을 연결합니다.
+   * PipelineEngine에서 에이전트 생성 후 호출합니다.
+   */
+  connectKnowledge(kb: SharedKnowledgeBase, bus: EventBus, chain: ContextChain): void {
+    this.knowledgeBase = kb;
+    this.eventBus = bus;
+    this.contextChain = chain;
+  }
+
+  /**
    * 태스크를 실행합니다 (공통 래핑 로직).
    */
   run(task: Task, projectPath: string): TaskResult {
     this.info.status = 'working';
     this.info.currentTask = task.id;
     const start = Date.now();
+
+    // 이벤트 발행: 태스크 시작
+    this.emitEvent('task:started', { taskId: task.id, title: task.title }, task);
 
     try {
       const result = this.executeTask(task, projectPath);
@@ -53,9 +77,14 @@ export abstract class BaseSubAgent {
 
       if (result.success) {
         this.info.completedTasks++;
+        this.emitEvent('task:completed', { taskId: task.id, duration, issues: result.issues.length }, task);
       } else {
         this.info.failedTasks++;
+        this.emitEvent('task:failed', { taskId: task.id, duration, issues: result.issues.length }, task);
       }
+
+      // 이슈를 인사이트로 자동 변환하여 KB에 저장
+      this.storeIssuesAsInsights(task, result);
 
       this.updateAvgDuration(duration);
       this.info.status = 'idle';
@@ -69,13 +98,16 @@ export abstract class BaseSubAgent {
       this.info.currentTask = undefined;
       this.updateAvgDuration(duration);
 
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.emitEvent('task:failed', { taskId: task.id, error: errorMsg }, task);
+
       return {
         success: false,
-        output: `Agent ${this.info.name} crashed: ${err instanceof Error ? err.message : String(err)}`,
+        output: `Agent ${this.info.name} crashed: ${errorMsg}`,
         artifacts: [],
         issues: [{
           severity: 'critical',
-          message: `Agent crash: ${err instanceof Error ? err.message : String(err)}`,
+          message: `Agent crash: ${errorMsg}`,
           autoFixable: false,
         }],
         duration,
@@ -138,5 +170,122 @@ export abstract class BaseSubAgent {
       autoFixable: false,
       ...opts,
     };
+  }
+
+  // ─── 지능 공유 헬퍼 메서드 ─────────────────────────────
+
+  /**
+   * SharedKnowledgeBase에 인사이트를 추가합니다.
+   */
+  protected addInsight(
+    category: InsightCategory,
+    severity: InsightSeverity,
+    title: string,
+    description: string,
+    task: Task,
+    affectedFiles: string[] = [],
+    metadata: Record<string, unknown> = {},
+  ): void {
+    if (!this.knowledgeBase) return;
+    this.knowledgeBase.addInsight({
+      category,
+      severity,
+      source: this.config.role,
+      phase: task.phase,
+      title,
+      description,
+      affectedFiles,
+      metadata,
+    });
+  }
+
+  /**
+   * 이전 Phase 및 다른 에이전트의 인사이트를 기반으로
+   * 현재 에이전트를 위한 컨텍스트를 생성합니다.
+   */
+  protected getSharedContext(task: Task): string {
+    const parts: string[] = [];
+
+    // KB 컨텍스트
+    if (this.knowledgeBase && this.knowledgeBase.size() > 0) {
+      parts.push(this.knowledgeBase.buildContextForAgent(this.config.role));
+    }
+
+    // ContextChain 컨텍스트
+    if (this.contextChain) {
+      const chainCtx = this.contextChain.buildContextForNextPhase(task.phase);
+      if (chainCtx) {
+        parts.push(chainCtx);
+      }
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * EventBus에 이벤트를 발행합니다.
+   */
+  protected emitEvent(
+    type: Parameters<EventBus['emit']>[0]['type'],
+    data: Record<string, unknown>,
+    task?: Task,
+  ): void {
+    if (!this.eventBus) return;
+    this.eventBus.emit({
+      type,
+      source: this.config.role,
+      phase: task?.phase || 'plan',
+      data,
+    });
+  }
+
+  /**
+   * TaskResult의 이슈를 자동으로 인사이트로 변환하여 KB에 저장합니다.
+   */
+  private storeIssuesAsInsights(task: Task, result: TaskResult): void {
+    if (!this.knowledgeBase) return;
+
+    for (const issue of result.issues) {
+      const category = this.mapIssueToCategoryForRole(issue);
+      const severity = this.mapSeverity(issue.severity);
+
+      this.knowledgeBase.addInsight({
+        category,
+        severity,
+        source: this.config.role,
+        phase: task.phase,
+        title: issue.message.slice(0, 100),
+        description: issue.message,
+        affectedFiles: issue.file ? [issue.file] : [],
+        metadata: {
+          line: issue.line,
+          autoFixable: issue.autoFixable,
+          suggestion: issue.suggestion,
+        },
+      });
+    }
+  }
+
+  private mapIssueToCategoryForRole(issue: TaskIssue): InsightCategory {
+    switch (this.config.role) {
+      case 'planner': return 'architecture';
+      case 'coder': return 'code-pattern';
+      case 'reviewer': return 'code-pattern';
+      case 'tester': return 'test-coverage';
+      case 'security': return 'vulnerability';
+      case 'browser': return 'accessibility';
+      case 'deployer': return 'deploy-readiness';
+      default: return 'recommendation';
+    }
+  }
+
+  private mapSeverity(severity: TaskIssue['severity']): InsightSeverity {
+    switch (severity) {
+      case 'critical': return 'critical';
+      case 'error': return 'high';
+      case 'warning': return 'medium';
+      case 'info': return 'info';
+      default: return 'low';
+    }
   }
 }
