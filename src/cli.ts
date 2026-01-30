@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
+import dotenv from 'dotenv';
 import { Command } from 'commander';
 import path from 'path';
+
+// .env 파일에서 환경변수 자동 로드 (API 키 등)
+dotenv.config();
 import { CodeReviewAgent } from './agent';
 import { formatReportAsText, formatReportAsJson } from './report-generator';
 import { ReviewStage } from './types';
