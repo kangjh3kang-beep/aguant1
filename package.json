@@ -1,0 +1,46 @@
+{
+  "name": "@antigravity/code-review-agent",
+  "version": "1.0.0",
+  "description": "자동 코드리뷰 에이전트 - 컴파일, 린트, 테스트를 자동으로 수행하여 완벽한 코드 검증을 제공합니다",
+  "main": "dist/index.js",
+  "bin": {
+    "ag-review": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint 'src/**/*.ts'",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "start": "node dist/cli.js",
+    "dev": "ts-node src/cli.ts",
+    "review": "ts-node src/cli.ts review",
+    "review:full": "ts-node src/cli.ts review --compile --lint --test"
+  },
+  "keywords": [
+    "code-review",
+    "agent",
+    "antigravity",
+    "lint",
+    "compile",
+    "test",
+    "automation"
+  ],
+  "author": "Antigravity Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^12.0.0",
+    "glob": "^10.3.10"
+  }
+}

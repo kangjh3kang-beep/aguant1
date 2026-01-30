@@ -1,0 +1,10 @@
+{
+  "$schema": "./ag-review.schema.json",
+  "projectPath": ".",
+  "stages": ["compile", "lint", "test"],
+  "compileCommand": "npx tsc --noEmit",
+  "lintCommand": "npx eslint 'src/**/*.ts' --format json",
+  "testCommand": "npx jest --json --no-coverage",
+  "failFast": false,
+  "verbose": true
+}
