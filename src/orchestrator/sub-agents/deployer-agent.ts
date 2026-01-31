@@ -17,6 +17,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { Task, TaskResult, TaskIssue, DeploymentConfig } from '../types';
 import { BaseSubAgent } from './base-agent';
+import { validateCommand } from '../../utils/process-runner';
 
 export class DeployerAgent extends BaseSubAgent {
   protected getAgentName(): string {
@@ -406,6 +407,13 @@ export class DeployerAgent extends BaseSubAgent {
     const logs: string[] = [];
     const issues: TaskIssue[] = [];
     const artifacts: string[] = [];
+
+    // 커맨드 인젝션 방지: process-runner의 검증 로직 사용
+    const cmdCheck = validateCommand(command);
+    if (!cmdCheck.valid) {
+      issues.push(this.createIssue('critical', `Custom deploy blocked: ${cmdCheck.reason}`));
+      return { success: false, logs, issues, artifacts };
+    }
 
     logs.push(`[DEPLOYER] Running custom deploy: ${command}`);
 

@@ -305,7 +305,15 @@ function httpPost(hostname: string, path: string, body: string, headers: Record<
     const req = https.request(options, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
-      res.on('end', () => resolve(Buffer.concat(chunks).toString()));
+      res.on('end', () => {
+        const responseBody = Buffer.concat(chunks).toString();
+        const statusCode = res.statusCode ?? 0;
+        if (statusCode >= 400) {
+          reject(new Error(`HTTP ${statusCode}: ${responseBody.slice(0, 500)}`));
+        } else {
+          resolve(responseBody);
+        }
+      });
     });
 
     req.on('error', (err) => reject(err));

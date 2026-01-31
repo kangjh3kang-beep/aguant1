@@ -11,6 +11,36 @@ import { loadHistory, analyzeTrend, formatTrendReport } from '../utils/review-hi
 import { Orchestrator } from '../orchestrator';
 import { TaskPhase } from '../orchestrator/types';
 
+/**
+ * 사용자 제공 프로젝트 경로를 검증합니다.
+ * Path Traversal 공격을 방지합니다.
+ */
+function validateProjectPath(userPath: string | undefined, fallback: string): string {
+  if (!userPath || typeof userPath !== 'string') return fallback;
+
+  const resolved = path.resolve(userPath);
+
+  // 상대경로 구성요소 방지
+  if (userPath.includes('..')) {
+    throw new Error('Invalid path: relative path components not allowed');
+  }
+
+  // 절대경로만 허용
+  if (!path.isAbsolute(resolved)) {
+    throw new Error('Invalid path: must be absolute');
+  }
+
+  // 민감한 시스템 디렉토리 차단
+  const forbidden = ['/etc', '/proc', '/sys', '/dev', '/var/run', '/root/.ssh', '/boot'];
+  for (const fp of forbidden) {
+    if (resolved === fp || resolved.startsWith(fp + '/')) {
+      throw new Error('Invalid path: system directory access denied');
+    }
+  }
+
+  return resolved;
+}
+
 export function createServer(defaultProjectPath?: string) {
   const app = express();
   app.use(express.json());
@@ -18,7 +48,7 @@ export function createServer(defaultProjectPath?: string) {
 
   // ─── 프로젝트 정보 ───
   app.get('/api/project', (req, res) => {
-    const projectPath = (req.query.path as string) || defaultProjectPath || process.cwd();
+    const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
     try {
       const { config } = loadConfig(projectPath);
       const fs = require('fs');
@@ -40,7 +70,7 @@ export function createServer(defaultProjectPath?: string) {
 
   // ─── 코드리뷰 실행 ───
   app.post('/api/review', (req, res) => {
-    const projectPath = req.body.path || defaultProjectPath || process.cwd();
+    const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
     const stages = req.body.stages || ['compile', 'lint', 'test'];
     const autoFix = req.body.autoFix || false;
 
@@ -79,7 +109,7 @@ export function createServer(defaultProjectPath?: string) {
 
   // ─── 오케스트레이션 실행 ───
   app.post('/api/orchestrate', (req, res) => {
-    const projectPath = req.body.path || defaultProjectPath || process.cwd();
+    const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
     const phases: TaskPhase[] = req.body.phases || ['plan', 'code', 'review', 'test', 'security', 'browser', 'deploy'];
     const failFast = req.body.failFast || false;
 
@@ -122,7 +152,7 @@ export function createServer(defaultProjectPath?: string) {
 
   // ─── 히스토리 ───
   app.get('/api/history', (req, res) => {
-    const projectPath = (req.query.path as string) || defaultProjectPath || process.cwd();
+    const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
     const count = parseInt(req.query.count as string, 10) || 20;
 
     try {
@@ -136,7 +166,7 @@ export function createServer(defaultProjectPath?: string) {
 
   // ─── 트렌드 ───
   app.get('/api/trend', (req, res) => {
-    const projectPath = (req.query.path as string) || defaultProjectPath || process.cwd();
+    const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
 
     try {
       const trend = analyzeTrend(projectPath);

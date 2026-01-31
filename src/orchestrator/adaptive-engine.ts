@@ -915,7 +915,9 @@ class StrategyExecutor {
     if (moduleMatch) {
       const moduleName = moduleMatch[1];
       // 상대 경로 import는 설치 대상이 아님
-      if (!moduleName.startsWith('.') && !moduleName.startsWith('/')) {
+      // npm 패키지명 형식만 허용 (커맨드 인젝션 방지)
+      const isValidNpmName = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(moduleName);
+      if (!moduleName.startsWith('.') && !moduleName.startsWith('/') && isValidNpmName) {
         const cmd = `npm install ${moduleName} 2>&1 || true`;
         commands.push(cmd);
         try {
@@ -1007,7 +1009,8 @@ class StrategyExecutor {
       const moduleMatch = pattern.originalMessage.match(/(?:Cannot find module|no module named)\s+['"]([^'"]+)['"]/i);
       if (moduleMatch) {
         const moduleName = moduleMatch[1];
-        if (!moduleName.startsWith('.')) {
+        const isValidNpmName = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(moduleName);
+        if (!moduleName.startsWith('.') && isValidNpmName) {
           const cmd = `npm install --save-dev ${moduleName} 2>&1 || true`;
           commands.push(cmd);
           try {
