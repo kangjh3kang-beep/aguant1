@@ -394,11 +394,17 @@ program
     const agentRoot = path.resolve(__dirname, '..');
 
     console.log('  [1/3] 최신 코드 가져오는 중...');
-    const pullResult = runProcess('git pull origin main', agentRoot, 60_000);
+    // 현재 브랜치를 자동 감지
+    const branchResult = runProcess('git rev-parse --abbrev-ref HEAD', agentRoot, 10_000);
+    const currentBranch = branchResult.exitCode === 0
+      ? branchResult.stdout.trim()
+      : 'main';
+    console.log(`  현재 브랜치: ${currentBranch}`);
+    const pullResult = runProcess(`git pull origin ${currentBranch}`, agentRoot, 60_000);
     if (pullResult.exitCode !== 0) {
       console.log('  Git pull 실패. 수동 업데이트:');
       console.log(`    cd ${agentRoot}`);
-      console.log('    git pull origin main');
+      console.log(`    git pull origin ${currentBranch}`);
       console.log('    npm install && npm run build && npm link');
       process.exit(1);
     }
