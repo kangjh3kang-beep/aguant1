@@ -193,9 +193,13 @@ export class CoderAgent extends BaseSubAgent {
               for (const e of v.errors) {
                 const localFix = codeGenV2.tryLocalFix(e, artifact, projectPath);
                 if (localFix) {
-                  const fixPath = path.resolve(projectPath, artifact);
-                  fs.writeFileSync(fixPath, localFix, 'utf-8');
-                  outputs.push(`[CODER] 로컬 수정 적용: ${artifact} (${v.stage} 에러)`);
+                  try {
+                    const fixPath = path.resolve(projectPath, artifact);
+                    fs.writeFileSync(fixPath, localFix, 'utf-8');
+                    outputs.push(`[CODER] 로컬 수정 적용: ${artifact} (${v.stage} 에러)`);
+                  } catch (writeErr: unknown) {
+                    outputs.push(`[CODER] 로컬 수정 쓰기 실패: ${artifact} — ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`);
+                  }
                 }
               }
             }
@@ -288,7 +292,7 @@ generateCode(config, request).then(r => {
 });
 `;
 
-      fs.writeFileSync(scriptPath, script);
+      fs.writeFileSync(scriptPath, script, { mode: 0o600 });
 
       const output = execSyncLocal(`node "${scriptPath}"`, {
         encoding: 'utf-8',
@@ -298,9 +302,17 @@ generateCode(config, request).then(r => {
       });
 
       // 임시 스크립트 제거
-      try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+      try { fs.unlinkSync(scriptPath); } catch (cleanupErr: unknown) {
+        if (cleanupErr && typeof cleanupErr === 'object' && (cleanupErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logs.push(`[CODER] 임시 파일 정리 실패: ${scriptPath}`);
+        }
+      }
 
-      response = JSON.parse(output);
+      const parsed = JSON.parse(output);
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('AI 응답이 올바른 JSON 객체가 아님');
+      }
+      response = parsed;
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logs.push(`[CODER] AI call failed: ${errMsg.slice(0, 300)}`);

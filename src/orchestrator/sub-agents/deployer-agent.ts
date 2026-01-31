@@ -144,8 +144,8 @@ export class DeployerAgent extends BaseSubAgent {
         } else {
           logs.push('[DEPLOYER] No build script found in package.json');
         }
-      } catch {
-        issues.push(this.createIssue('warning', 'Could not parse package.json'));
+      } catch (err: unknown) {
+        issues.push(this.createIssue('warning', `Could not parse package.json: ${err instanceof Error ? err.message : 'parse error'}`));
       }
     }
 
@@ -217,8 +217,9 @@ export class DeployerAgent extends BaseSubAgent {
       // Docker 사용 가능 확인
       execSync('docker --version', { encoding: 'utf-8', timeout: 10000 });
 
-      const imageName = path.basename(projectPath).toLowerCase();
-      const tag = `${imageName}:${config.environment}`;
+      const imageName = path.basename(projectPath).toLowerCase().replace(/[^a-z0-9._-]/g, '');
+      const env = (config.environment || 'latest').replace(/[^a-z0-9._-]/g, '');
+      const tag = `${imageName}:${env}`;
 
       execSync(`docker build -t ${tag} .`, {
         cwd: projectPath,
@@ -325,7 +326,9 @@ export class DeployerAgent extends BaseSubAgent {
 
         // Node.js 엔진 명시
         check('engines.node 명시', !!pkg.engines?.node, 'engines: { node: ">=18" } 추가 권장');
-      } catch { /* skip */ }
+      } catch (err: unknown) {
+        logs.push(`[DEPLOYER] package.json 검증 파싱 실패: ${err instanceof Error ? err.message : 'parse error'}`);
+      }
     }
 
     // Docker 관련 검증
