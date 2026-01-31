@@ -7,6 +7,11 @@
  *  · 복잡도 분석 (대형 함수, 깊은 중첩, 긴 파라미터 리스트)
  *  · SOLID 원칙 위반 패턴 식별
  *  · 자동 수정(Auto-Fix) + 학습 루프(Learning Loop) + 트렌드 분석
+ *
+ * ━━━ Phase 8 강화 ━━━
+ *  · 감지 → 수정 직접 연결 (CodeTransformer 통합)
+ *  · autoFixable 정확한 분류 (CodeTransformer 처리 가능 여부 기반)
+ *  · 수정 결과 리포트 포함
  */
 
 import fs from 'fs';
@@ -15,10 +20,20 @@ import { Task, TaskResult } from '../types';
 import { BaseSubAgent } from './base-agent';
 import { CodeReviewAgent } from '../../agent';
 import { formatReportAsText } from '../../report-generator';
+import type { TransformType } from '../code-transformer';
 
 /* ═════════════════════════════════════════════════
    코드 스멜 탐지 패턴 — Expert Code Smell DB
-   ═════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════ */
+
+/** CodeTransformer가 자동 수정 가능한 스멜 → 변환 타입 매핑 */
+const FIXABLE_SMELL_MAP: Record<string, TransformType> = {
+  'Console Statement in Production': 'remove-console',
+  'TypeScript `any` Usage': 'replace-any-type',
+  'Empty Catch Block': 'fix-empty-catch',
+  'Non-null Assertion (!.)': 'remove-non-null-assertion',
+};
+
 const CODE_SMELL_PATTERNS: { pattern: RegExp; name: string; advice: string; severity: 'warning' | 'info' }[] = [
   { pattern: /function\s+\w+\s*\([^)]{120,}\)/g, name: 'Long Parameter List (5+ params)', advice: '파라미터 객체(Options Object)로 묶으세요', severity: 'warning' },
   { pattern: /if\s*\([^)]+\)\s*\{[^}]*if\s*\([^)]+\)\s*\{[^}]*if\s*\([^)]+\)/g, name: 'Deep Nesting (3+ levels)', advice: 'Early Return/Guard Clause 패턴으로 중첩을 줄이세요', severity: 'warning' },
@@ -50,6 +65,7 @@ export class ReviewerAgent extends BaseSubAgent {
       'complexity-analysis',
       'solid-violation-check',
       'dead-code-detection',
+      'direct-code-fix',
     ];
   }
 
@@ -98,15 +114,16 @@ export class ReviewerAgent extends BaseSubAgent {
       enhancedOutputs.push(`[REVIEWER] 이전 Phase 인사이트 ${sharedCtx.length}자 참조`);
     }
 
-    // 코드 스멜 심층 분석
-    const smellIssues = this.detectCodeSmells(projectPath);
-    issues.push(...smellIssues);
+    // 코드 스멜 심층 분석 + 자동 수정
+    const smellResult = this.detectAndFixCodeSmells(projectPath);
+    issues.push(...smellResult.issues);
+    enhancedOutputs.push(...smellResult.logs);
 
     // ── SharedKnowledge: 코드 스멜 인사이트 저장 ──
-    if (smellIssues.length > 0) {
-      this.addInsight('code-pattern', 'medium', `코드 스멜 ${smellIssues.length}건 감지`,
-        smellIssues.map((i) => i.message).join('\n'),
-        task, smellIssues.map((i) => i.file || '').filter(Boolean));
+    if (smellResult.issues.length > 0) {
+      this.addInsight('code-pattern', 'medium', `코드 스멜 ${smellResult.issues.length}건 감지, ${smellResult.fixedCount}건 자동 수정`,
+        smellResult.issues.map((i) => i.message).join('\n'),
+        task, smellResult.issues.map((i) => i.file || '').filter(Boolean));
     }
 
     // 복잡도 분석
@@ -139,10 +156,12 @@ export class ReviewerAgent extends BaseSubAgent {
       }
     }
 
-    // 코드 스멜 요약을 artifacts에 추가
-    const smellCount = smellIssues.length;
-    if (smellCount > 0) {
-      artifacts.push(`[CODE-QUALITY] ${smellCount} code smell(s) detected`);
+    // 코드 스멜 수정 결과 artifacts
+    if (smellResult.fixedCount > 0) {
+      artifacts.push(`[AUTO-FIX] CodeTransformer로 ${smellResult.fixedCount}건 코드 스멜 자동 수정 완료`);
+    }
+    if (smellResult.issues.length > smellResult.fixedCount) {
+      artifacts.push(`[CODE-QUALITY] ${smellResult.issues.length - smellResult.fixedCount} code smell(s) remaining (수동 수정 필요)`);
     }
 
     // 프롬프트 강화 정보를 artifacts에 추가
@@ -160,9 +179,23 @@ export class ReviewerAgent extends BaseSubAgent {
     };
   }
 
-  /** 코드 스멜 탐지 — 25종 패턴 매칭 */
-  private detectCodeSmells(projectPath: string): TaskResult['issues'] {
+  /**
+   * 코드 스멜 탐지 + CodeTransformer를 통한 자동 수정
+   *
+   * 흐름: 패턴 매칭 → 수정 가능 여부 분류 → CodeTransformer 실행 → 결과 리포트
+   */
+  private detectAndFixCodeSmells(projectPath: string): {
+    issues: TaskResult['issues'];
+    logs: string[];
+    fixedCount: number;
+  } {
     const issues: TaskResult['issues'] = [];
+    const logs: string[] = [];
+    let fixedCount = 0;
+
+    // 파일별로 감지된 스멜과 수정 가능 변환 타입 수집
+    const fileSmells = new Map<string, { smells: typeof CODE_SMELL_PATTERNS; transforms: Set<TransformType> }>();
+
     const scanDir = (dir: string, depth: number) => {
       if (depth > 5) return;
       try {
@@ -180,10 +213,21 @@ export class ReviewerAgent extends BaseSubAgent {
                 smell.pattern.lastIndex = 0;
                 const matches = content.match(smell.pattern);
                 if (matches && matches.length > 0) {
+                  const transformType = FIXABLE_SMELL_MAP[smell.name];
+                  const isFixable = !!transformType;
+
                   issues.push(this.createIssue(smell.severity,
                     `[Code Smell] ${smell.name} (${matches.length}건) — ${smell.advice}`,
-                    { file: relPath, autoFixable: false },
+                    { file: relPath, autoFixable: isFixable },
                   ));
+
+                  // 수정 가능한 스멜이면 파일별 변환 목록에 추가
+                  if (isFixable) {
+                    if (!fileSmells.has(relPath)) {
+                      fileSmells.set(relPath, { smells: [], transforms: new Set() });
+                    }
+                    fileSmells.get(relPath)!.transforms.add(transformType);
+                  }
                 }
               }
             } catch { /* skip */ }
@@ -191,8 +235,39 @@ export class ReviewerAgent extends BaseSubAgent {
         }
       } catch { /* skip */ }
     };
+
     scanDir(projectPath, 0);
-    return issues;
+
+    // CodeTransformer로 수정 가능한 스멜 자동 수정
+    if (fileSmells.size > 0) {
+      logs.push('[REVIEWER] ── CodeTransformer 자동 수정 실행 ──');
+      try {
+        // 지연 로딩: 테스트 환경에서 typescript 모듈 로드 오류 방지
+        const { CodeTransformer } = require('../code-transformer');
+        const transformer = new CodeTransformer(projectPath);
+        for (const [file, data] of fileSmells) {
+          const transforms = Array.from(data.transforms);
+          const result = transformer.transformFile(file, transforms);
+          if (result.success && result.appliedCount > 0) {
+            fixedCount += result.appliedCount;
+            logs.push(`[REVIEWER] ✓ ${file}: ${result.appliedCount}건 수정 (${transforms.join(', ')})`);
+            for (const change of result.changes) {
+              logs.push(`[REVIEWER]   → ${change.description}`);
+            }
+          }
+        }
+        if (fixedCount > 0) {
+          logs.push(`[REVIEWER] ✅ 총 ${fixedCount}건 코드 스멜 자동 수정 완료`);
+        } else {
+          logs.push(`[REVIEWER] ℹ️  수정 가능한 스멜이 있으나 변환 적용 없음 (이미 정리됨)`);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logs.push(`[REVIEWER] ⚠️  CodeTransformer 실행 실패: ${msg}`);
+      }
+    }
+
+    return { issues, logs, fixedCount };
   }
 
   /** 복잡도 분석 — 대형 파일·함수 탐지 */

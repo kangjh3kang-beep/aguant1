@@ -489,7 +489,10 @@ export class AutonomousLoop {
       }
 
       // error/warning → 자동 수정 시도
+      // info 레벨이라도 autoFixable: true이면 수정 대상에 포함 (Phase 8 강화)
       if (issue.severity === 'error' || issue.severity === 'warning') {
+        autoFixable.push(issue);
+      } else if (issue.severity === 'info' && (issue.autoFixable || this.isExtendedAutoFixable(issue))) {
         autoFixable.push(issue);
       }
     }
