@@ -126,6 +126,18 @@ export class ReviewerAgent extends BaseSubAgent {
         task, smellResult.issues.map((i) => i.file || '').filter(Boolean));
     }
 
+    // AI 심층 코드 리뷰 (LLM 기반)
+    const aiReview = this.runAICodeReview(projectPath);
+    issues.push(...aiReview.issues);
+    enhancedOutputs.push(...aiReview.logs);
+
+    // ── SharedKnowledge: AI 리뷰 인사이트 저장 ──
+    if (aiReview.issues.length > 0) {
+      this.addInsight('code-pattern', 'high', `AI 심층 리뷰 ${aiReview.issues.length}건`,
+        aiReview.issues.map((i) => i.message).join('\n'),
+        task, aiReview.issues.map((i) => i.file || '').filter(Boolean));
+    }
+
     // 복잡도 분석
     const complexityIssues = this.analyzeComplexity(projectPath);
     issues.push(...complexityIssues);
@@ -268,6 +280,124 @@ export class ReviewerAgent extends BaseSubAgent {
     }
 
     return { issues, logs, fixedCount };
+  }
+
+  /**
+   * AI 심층 코드 리뷰 — LLM 기반 코드 품질 분석
+   *
+   * 정규식으로 잡지 못하는 이슈를 AI가 분석합니다:
+   *  · SOLID 원칙 위반
+   *  · 설계 패턴 오용
+   *  · 네이밍 컨벤션 문제
+   *  · 비즈니스 로직 결함
+   *  · 성능 병목 가능성
+   */
+  private runAICodeReview(projectPath: string): {
+    issues: TaskResult['issues'];
+    logs: string[];
+  } {
+    const issues: TaskResult['issues'] = [];
+    const logs: string[] = [];
+
+    if (!this.hasAIProvider()) {
+      logs.push('[REVIEWER] AI 프로바이더 없음 — 정규식 기반 분석만 수행');
+      return { issues, logs };
+    }
+
+    logs.push('[REVIEWER] ── AI 심층 코드 리뷰 시작 ──');
+
+    // 분석 대상 소스 파일 수집 (최대 5개, 가장 큰 파일 우선)
+    const sourceFiles: { relPath: string; content: string; lines: number }[] = [];
+    const collectFiles = (dir: string, depth: number) => {
+      if (depth > 4) return;
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            collectFiles(fullPath, depth + 1);
+          } else if (/\.(ts|js|tsx|jsx)$/.test(entry.name) && !/\.(test|spec|d)\./i.test(entry.name)) {
+            try {
+              const content = fs.readFileSync(fullPath, 'utf-8');
+              const lines = content.split('\n').length;
+              if (lines > 20) { // 20줄 미만은 분석 가치 낮음
+                sourceFiles.push({ relPath: path.relative(projectPath, fullPath), content, lines });
+              }
+            } catch { /* skip */ }
+          }
+        }
+      } catch { /* skip */ }
+    };
+    collectFiles(projectPath, 0);
+
+    // 파일 크기 순 정렬, 상위 5개
+    sourceFiles.sort((a, b) => b.lines - a.lines);
+    const targets = sourceFiles.slice(0, 5);
+
+    if (targets.length === 0) {
+      logs.push('[REVIEWER] 분석 대상 소스 파일 없음');
+      return { issues, logs };
+    }
+
+    // AI에게 코드 리뷰 요청
+    const codeSnippets = targets.map((f) => {
+      const truncated = f.content.length > 3000 ? f.content.slice(0, 3000) + '\n// ... (truncated)' : f.content;
+      return `=== ${f.relPath} (${f.lines}줄) ===\n${truncated}`;
+    }).join('\n\n');
+
+    const systemPrompt = `당신은 15년 경력의 시니어 코드 리뷰어입니다.
+다음 코드를 분석하여 JSON 배열로 이슈를 보고하세요.
+
+분석 항목:
+1. SOLID 원칙 위반 (단일 책임, 개방-폐쇄, 리스코프, 인터페이스 분리, 의존성 역전)
+2. 설계 패턴 오용 또는 누락
+3. 에러 처리 부족 또는 잘못된 에러 처리
+4. 성능 병목 (불필요한 반복, 메모리 누수 가능성, O(n²) 이상)
+5. 네이밍 컨벤션 위반
+6. 코드 중복
+7. 타입 안전성 문제
+
+응답 형식 (JSON만 출력):
+[
+  {
+    "file": "파일경로",
+    "severity": "warning" | "info",
+    "message": "[카테고리] 구체적인 이슈 설명",
+    "suggestion": "수정 방안"
+  }
+]
+
+이슈가 없으면 빈 배열 []을 반환하세요. 최대 10개까지만 보고하세요.`;
+
+    const aiResponse = this.callAISync(systemPrompt, codeSnippets, { maxTokens: 2048, timeout: 60000 });
+
+    if (!aiResponse) {
+      logs.push('[REVIEWER] AI 응답 없음 — 정규식 분석 결과만 사용');
+      return { issues, logs };
+    }
+
+    // AI 응답 파싱
+    try {
+      // JSON 배열 추출 (코드블록이나 앞뒤 텍스트 제거)
+      const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const aiIssues: Array<{ file?: string; severity?: string; message?: string; suggestion?: string }> = JSON.parse(jsonMatch[0]);
+        for (const ai of aiIssues) {
+          if (!ai.message) continue;
+          const sev = ai.severity === 'warning' ? 'warning' as const : 'info' as const;
+          issues.push(this.createIssue(sev,
+            `[AI Review] ${ai.message}`,
+            { file: ai.file, suggestion: ai.suggestion, autoFixable: false },
+          ));
+        }
+        logs.push(`[REVIEWER] ✅ AI 심층 분석 완료: ${issues.length}건 이슈 발견 (${targets.length}개 파일 분석)`);
+      }
+    } catch {
+      logs.push('[REVIEWER] ⚠️  AI 응답 파싱 실패 — 정규식 분석 결과만 사용');
+    }
+
+    return { issues, logs };
   }
 
   /** 복잡도 분석 — 대형 파일·함수 탐지 */

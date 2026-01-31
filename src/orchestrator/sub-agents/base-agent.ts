@@ -11,6 +11,8 @@
  *  EventBus를 통해 실시간 이벤트를 발행/구독합니다.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { Task, TaskResult, TaskIssue, SubAgentConfig, SubAgentInfo, AgentRole, AgentStatus } from '../types';
 import { PromptEnhancer, EnhancedPrompt } from '../prompt-enhancer';
 import { SharedKnowledgeBase, EventBus, ContextChain, InsightCategory, InsightSeverity } from '../shared-knowledge';
@@ -263,6 +265,82 @@ export abstract class BaseSubAgent {
           suggestion: issue.suggestion,
         },
       });
+    }
+  }
+
+  // ─── AI 호출 공통 헬퍼 ──────────────────────────────────
+
+  /**
+   * AI 프로바이더를 통해 동기적으로 텍스트 분석/생성을 요청합니다.
+   *
+   * executeTask()가 동기 메서드이므로 async generateCode()를
+   * 임시 스크립트 + execSync 방식으로 래핑합니다.
+   *
+   * @returns AI 응답 텍스트 또는 null (API 키 없음 / 호출 실패)
+   */
+  protected callAISync(
+    systemPrompt: string,
+    userPrompt: string,
+    opts?: { maxTokens?: number; timeout?: number },
+  ): string | null {
+    try {
+      // 지연 로딩: 테스트 환경에서 순환 의존 방지
+      const { autoDetectProvider } = require('../ai-provider');
+      const aiConfig = this.config.aiProvider || autoDetectProvider();
+      if (!aiConfig) return null;
+
+      const { execSync: execSyncLocal } = require('child_process');
+      const tmpDir = path.join(require('os').tmpdir(), '.ag-review-ai');
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+      const scriptPath = path.join(tmpDir, `_ai_${this.info.id}_${Date.now()}.js`);
+      const providerPath = path.resolve(__dirname, '..', 'ai-provider').replace(/\\/g, '\\\\');
+
+      const script = `
+const { generateCode } = require('${providerPath}');
+const config = ${JSON.stringify(aiConfig)};
+const request = {
+  prompt: ${JSON.stringify(userPrompt)},
+  systemPrompt: ${JSON.stringify(systemPrompt)},
+  maxTokens: ${opts?.maxTokens || 4096},
+};
+generateCode(config, request).then(r => {
+  if (r.success) {
+    process.stdout.write(JSON.stringify({ ok: true, text: r.code || '' }));
+  } else {
+    process.stdout.write(JSON.stringify({ ok: false, error: r.error }));
+  }
+}).catch(e => {
+  process.stdout.write(JSON.stringify({ ok: false, error: e.message }));
+});
+`;
+
+      fs.writeFileSync(scriptPath, script);
+      try {
+        const output = execSyncLocal(`node "${scriptPath}"`, {
+          encoding: 'utf-8',
+          timeout: opts?.timeout || 120000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        const result = JSON.parse(output);
+        return result.ok ? result.text : null;
+      } finally {
+        try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * AI 프로바이더가 사용 가능한지 빠르게 확인합니다.
+   */
+  protected hasAIProvider(): boolean {
+    try {
+      const { autoDetectProvider } = require('../ai-provider');
+      return !!(this.config.aiProvider || autoDetectProvider());
+    } catch {
+      return false;
     }
   }
 

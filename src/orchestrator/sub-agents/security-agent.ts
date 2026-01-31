@@ -81,6 +81,18 @@ export class SecurityAgent extends BaseSubAgent {
     outputs.push(...authResult.logs);
     issues.push(...authResult.issues);
 
+    // 5. AI 심층 보안 분석 (LLM 기반)
+    const aiSecurity = this.runAISecurityAnalysis(projectPath);
+    outputs.push(...aiSecurity.logs);
+    issues.push(...aiSecurity.issues);
+
+    // ── SharedKnowledge: AI 보안 인사이트 저장 ──
+    if (aiSecurity.issues.length > 0) {
+      this.addInsight('vulnerability', 'high', `AI 심층 보안 분석 ${aiSecurity.issues.length}건`,
+        aiSecurity.issues.map((i) => i.message).join('\n'),
+        task, aiSecurity.issues.map((i) => i.file || '').filter(Boolean));
+    }
+
     // ── SharedKnowledge: 보안 인사이트 저장 ──
     if (depAudit.issues.length > 0) {
       this.addInsight('dependency', 'high', `의존성 취약점 ${depAudit.issues.length}건`,
@@ -333,6 +345,123 @@ export class SecurityAgent extends BaseSubAgent {
     logs.push(`[SECURITY] SAST: ${issues.length} pattern(s) detected`);
 
     return { logs, issues };
+  }
+
+  /**
+   * AI 심층 보안 분석 — LLM 기반 취약점 탐지
+   *
+   * 정규식으로 잡지 못하는 보안 이슈를 AI가 분석합니다:
+   *  · 데이터 흐름 기반 인젝션 탐지 (입력 → 변수 → 쿼리/명령)
+   *  · 비즈니스 로직 취약점 (인증 우회, 권한 상승)
+   *  · 레이스 컨디션 / TOCTOU
+   *  · 안전하지 않은 역직렬화
+   *  · SSRF / 오픈 리다이렉트
+   */
+  private runAISecurityAnalysis(projectPath: string): {
+    issues: TaskIssue[];
+    logs: string[];
+  } {
+    const issues: TaskIssue[] = [];
+    const logs: string[] = [];
+
+    if (!this.hasAIProvider()) {
+      logs.push('[SECURITY] AI 프로바이더 없음 — 정규식 기반 분석만 수행');
+      return { issues, logs };
+    }
+
+    logs.push('[SECURITY] ── AI 심층 보안 분석 시작 ──');
+
+    // 보안에 민감한 파일 우선 수집 (인증, API, DB 관련)
+    const sensitiveFiles: { relPath: string; content: string }[] = [];
+    const sensitivePatterns = /auth|login|session|token|password|middleware|api|route|controller|database|db|query|user/i;
+
+    const collectFiles = (dir: string, depth: number) => {
+      if (depth > 5 || sensitiveFiles.length >= 8) return;
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            collectFiles(fullPath, depth + 1);
+          } else if (/\.(ts|js|tsx|jsx)$/.test(entry.name) && !/\.(test|spec|d)\./i.test(entry.name)) {
+            if (sensitivePatterns.test(entry.name) || sensitivePatterns.test(path.relative(projectPath, dir))) {
+              try {
+                const content = fs.readFileSync(fullPath, 'utf-8');
+                if (content.length > 100) {
+                  sensitiveFiles.push({
+                    relPath: path.relative(projectPath, fullPath),
+                    content: content.length > 3000 ? content.slice(0, 3000) + '\n// ... (truncated)' : content,
+                  });
+                }
+              } catch { /* skip */ }
+            }
+          }
+        }
+      } catch { /* skip */ }
+    };
+    collectFiles(projectPath, 0);
+
+    if (sensitiveFiles.length === 0) {
+      logs.push('[SECURITY] 보안 민감 파일 없음 — AI 분석 스킵');
+      return { issues, logs };
+    }
+
+    const codeSnippets = sensitiveFiles.map((f) =>
+      `=== ${f.relPath} ===\n${f.content}`,
+    ).join('\n\n');
+
+    const systemPrompt = `당신은 20년 경력의 사이버보안 전문가(CISO)입니다.
+주어진 코드의 보안 취약점을 분석하여 JSON 배열로 보고하세요.
+
+분석 항목:
+1. 인젝션 공격 (SQL, NoSQL, Command, XSS, SSRF) — 데이터 흐름 추적
+2. 인증/인가 결함 (우회 가능성, 세션 관리 문제, JWT 검증 누락)
+3. 민감 데이터 노출 (평문 저장, 로그 출력, 응답에 포함)
+4. 레이스 컨디션 / TOCTOU
+5. 안전하지 않은 역직렬화
+6. CORS/CSP 설정 문제
+7. 에러 메시지를 통한 정보 노출
+
+응답 형식 (JSON만 출력):
+[
+  {
+    "file": "파일경로",
+    "severity": "critical" | "error" | "warning",
+    "message": "[OWASP 분류] 구체적인 취약점 설명",
+    "suggestion": "수정 방안"
+  }
+]
+
+확실한 취약점만 보고하세요. 추측하지 마세요. 최대 8개.`;
+
+    const aiResponse = this.callAISync(systemPrompt, codeSnippets, { maxTokens: 2048, timeout: 60000 });
+
+    if (!aiResponse) {
+      logs.push('[SECURITY] AI 응답 없음 — 정규식 분석 결과만 사용');
+      return { issues, logs };
+    }
+
+    try {
+      const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const aiIssues: Array<{ file?: string; severity?: string; message?: string; suggestion?: string }> = JSON.parse(jsonMatch[0]);
+        for (const ai of aiIssues) {
+          if (!ai.message) continue;
+          const sevMap: Record<string, TaskIssue['severity']> = { critical: 'critical', error: 'error', warning: 'warning' };
+          const sev = sevMap[ai.severity || 'warning'] || 'warning';
+          issues.push(this.createIssue(sev,
+            `[AI Security] ${ai.message}`,
+            { file: ai.file, suggestion: ai.suggestion, autoFixable: false },
+          ));
+        }
+        logs.push(`[SECURITY] ✅ AI 심층 보안 분석 완료: ${issues.length}건 취약점 발견 (${sensitiveFiles.length}개 파일 분석)`);
+      }
+    } catch {
+      logs.push('[SECURITY] ⚠️  AI 응답 파싱 실패 — 정규식 분석 결과만 사용');
+    }
+
+    return { issues, logs };
   }
 
   /** 인증/보안 설정 패턴 검증 */

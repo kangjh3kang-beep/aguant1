@@ -532,22 +532,27 @@ export class TesterAgent extends BaseSubAgent {
       const exports = this.extractExports(content);
       if (exports.length === 0) return null;
 
-      // 테스트 스텁 생성
-      const importPath = `./${baseName}`;
-      const importNames = exports.map((e) => e.name).join(', ');
-
-      const isReactComponent = /\.(tsx|jsx)$/.test(sourceFile) &&
-        (content.includes('React') || content.includes('jsx') || /export\s+(default\s+)?function\s+\w+/.test(content));
-
+      // 1차 시도: AI 기반 의미있는 테스트 생성
+      const aiTest = this.generateAITest(sourceFile, content, projectPath, framework);
       let testContent: string;
 
-      if (isReactComponent) {
-        testContent = this.generateReactTestStub(importPath, exports, baseName);
-      } else if (framework === 'pytest') {
-        // Python 테스트는 별도 처리
-        return null;
+      if (aiTest) {
+        testContent = aiTest;
       } else {
-        testContent = this.generateUnitTestStub(importPath, importNames, exports, baseName);
+        // 2차 폴백: 템플릿 기반 스텁 생성
+        const importPath = `./${baseName}`;
+        const importNames = exports.map((e) => e.name).join(', ');
+
+        const isReactComponent = /\.(tsx|jsx)$/.test(sourceFile) &&
+          (content.includes('React') || content.includes('jsx') || /export\s+(default\s+)?function\s+\w+/.test(content));
+
+        if (isReactComponent) {
+          testContent = this.generateReactTestStub(importPath, exports, baseName);
+        } else if (framework === 'pytest') {
+          return null;
+        } else {
+          testContent = this.generateUnitTestStub(importPath, importNames, exports, baseName);
+        }
       }
 
       if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
@@ -601,6 +606,43 @@ export class TesterAgent extends BaseSubAgent {
 
     // type/interface는 제외 (테스트 불필요)
     return exports.filter((e) => e.type !== 'type');
+  }
+
+  /**
+   * AI 기반 의미있는 테스트 생성
+   *
+   * 단순 `toBeDefined()` 스텁 대신 AI가 소스 코드를 분석하여
+   * 실제 비즈니스 로직을 검증하는 테스트를 생성합니다.
+   */
+  private generateAITest(
+    sourceFile: string,
+    sourceContent: string,
+    projectPath: string,
+    framework: string,
+  ): string | null {
+    if (!this.hasAIProvider()) return null;
+
+    const truncated = sourceContent.length > 4000
+      ? sourceContent.slice(0, 4000) + '\n// ... (truncated)'
+      : sourceContent;
+
+    const systemPrompt = `당신은 15년 경력의 QA 엔지니어입니다.
+주어진 소스 코드를 분석하여 ${framework === 'jest' || framework === 'vitest' || framework === 'unknown' ? 'Jest' : framework} 테스트 코드를 생성하세요.
+
+필수 규칙:
+1. 모든 export된 함수/클래스에 대해 테스트 작성
+2. 각 함수마다 최소 2개 테스트: 정상 케이스 + 엣지/에러 케이스
+3. 실제 로직을 검증하는 의미있는 assertion 사용 (toBeDefined()만 쓰지 마세요)
+4. 외부 의존성은 jest.mock()으로 모킹
+5. describe/it 블록으로 구조화
+6. TypeScript로 작성
+
+코드만 출력하세요. 설명은 불필요합니다.`;
+
+    const userPrompt = `파일: ${sourceFile}\n\n${truncated}`;
+
+    const aiResponse = this.callAISync(systemPrompt, userPrompt, { maxTokens: 4096, timeout: 60000 });
+    return aiResponse || null;
   }
 
   /** 일반 유닛 테스트 스텁 생성 */
