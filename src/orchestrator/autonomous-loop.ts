@@ -38,6 +38,7 @@ import { PromptEnhancer } from './prompt-enhancer';
 import { AdaptiveEngine, FixStrategy, FailurePattern } from './adaptive-engine';
 import { DirectFeedbackPipeline, PipelineResult as DirectPatchResult } from './direct-feedback-pipeline';
 import { CodeTransformer } from './code-transformer';
+import { LearningMemory } from './learning-memory';
 
 // ─── 시스템 분석 결과 (전체 시스템 인지) ───
 
@@ -90,6 +91,12 @@ export interface AutonomousConfig {
   rootCauseAnalysis: boolean;
   /** 회귀 방지 검증 활성화 */
   regressionGuard: boolean;
+  /** Check-Act 품질 임계값 (0~100). 이 점수 이상이면 반복 중단 */
+  qualityThreshold: number;
+  /** LLM-as-a-Judge 활성화 — 보조 모델이 수정 품질을 평가 */
+  llmJudgeEnabled: boolean;
+  /** 다중 모델 선택 활성화 — 작업 복잡도별 모델 자동 선택 */
+  multiModelEnabled: boolean;
 }
 
 export const DEFAULT_AUTONOMOUS_CONFIG: AutonomousConfig = {
@@ -102,6 +109,9 @@ export const DEFAULT_AUTONOMOUS_CONFIG: AutonomousConfig = {
   systemAnalysisEnabled: true,
   rootCauseAnalysis: true,
   regressionGuard: true,
+  qualityThreshold: 90,
+  llmJudgeEnabled: true,
+  multiModelEnabled: true,
 };
 
 // ─── 피드백 메시지 ───
@@ -160,6 +170,14 @@ export interface LoopSummary {
   phasesBlocked: TaskPhase[];
   humanInterventionNeeded: boolean;
   productionReady: boolean;
+  /** Check-Act 품질 점수 (0~100) — 마지막 사이클 기준 */
+  qualityScore: number;
+  /** 사이클별 품질 점수 이력 */
+  qualityHistory: number[];
+  /** LLM-as-a-Judge 평가 결과 (활성화 시) */
+  llmJudgeVerdict?: string;
+  /** 사용된 AI 모델 이력 */
+  modelsUsed: string[];
 }
 
 // ─── 자율 루프 엔진 ───
@@ -173,6 +191,7 @@ export class AutonomousLoop {
   private adaptiveEngine: AdaptiveEngine;
   private directFeedback: DirectFeedbackPipeline;
   private codeTransformer: CodeTransformer;
+  private learningMemory: LearningMemory;
 
   constructor(
     project: ProjectSpec,
@@ -191,6 +210,9 @@ export class AutonomousLoop {
     // Phase 4-5: 직접 코드 수정 엔진
     this.directFeedback = new DirectFeedbackPipeline(project.rootPath);
     this.codeTransformer = new CodeTransformer(project.rootPath);
+
+    // Phase 10-D: 영속적 학습 메모리
+    this.learningMemory = new LearningMemory(project.rootPath);
 
     this.state = {
       cycle: 0,
@@ -211,6 +233,9 @@ export class AutonomousLoop {
         phasesBlocked: [],
         humanInterventionNeeded: false,
         productionReady: false,
+        qualityScore: 0,
+        qualityHistory: [],
+        modelsUsed: [],
       },
     };
   }
@@ -235,6 +260,10 @@ export class AutonomousLoop {
     this.log(`  코드 변환:        ON (CodeTransformer + DirectFeedbackPipeline)`);
     this.log(`  직접 패치:        ON (이슈 → 패치 → 적용 → 검증)`);
     this.log(`  학습 패턴:        ${this.adaptiveEngine.getPatternDB().size()}개 축적`);
+    this.log(`  품질 임계값:      ${this.config.qualityThreshold}점 (Check-Act)`);
+    this.log(`  LLM Judge:        ${this.config.llmJudgeEnabled ? 'ON' : 'OFF'}`);
+    this.log(`  다중 모델:        ${this.config.multiModelEnabled ? 'ON' : 'OFF'}`);
+    this.log(`  학습 메모리:      ${this.learningMemory.getData().issuePatterns.length}개 패턴 축적`);
     this.log('');
 
     // ─── Phase 0: 전체 시스템 분석 (최초 1회) ───
@@ -259,11 +288,62 @@ export class AutonomousLoop {
       // 2. 결과 분석
       const analysis = this.analyzeResult(pipelineResult);
 
+      // 2.5 Check-Act: 품질 점수 계산
+      const qualityScore = this.calculateQualityScore(pipelineResult, analysis);
+      this.state.summary.qualityHistory.push(qualityScore);
+      this.state.summary.qualityScore = qualityScore;
+      this.log(`\n  📊 품질 점수: ${qualityScore}/100 (임계값: ${this.config.qualityThreshold})`);
+
+      // 다중 모델 선택 기록
+      if (this.config.multiModelEnabled) {
+        const modelSelection = this.selectModelForTask(
+          analysis.failedPhase || 'review',
+          analysis.totalIssues,
+          analysis.autoFixable.some((i) => i.severity === 'critical') ? 'critical' : 'normal',
+        );
+        if (!this.state.summary.modelsUsed.includes(modelSelection.model)) {
+          this.state.summary.modelsUsed.push(modelSelection.model);
+        }
+        this.log(`  🤖 모델 선택: ${modelSelection.model} (${modelSelection.reason})`);
+      }
+
+      // 이슈를 학습 메모리에 기록
+      const allCycleIssues = pipelineResult.tasks.flatMap((t) => t.result?.issues || []);
+      for (const issue of allCycleIssues.slice(0, 50)) {
+        this.learningMemory.recordIssue(issue.message, issue.severity, issue.file);
+      }
+
       // 3. 모든 단계 통과 → 프로덕션 준비 완료
       if (analysis.allPassed) {
         this.log('\n  ✅ 모든 단계 통과! 프로덕션 준비 완료.');
+        // LLM-as-a-Judge: 최종 검증
+        if (this.config.llmJudgeEnabled) {
+          const judgeVerdict = this.runLLMJudge(pipelineResult, qualityScore);
+          this.state.summary.llmJudgeVerdict = judgeVerdict.verdict;
+          this.log(`  ⚖️  LLM Judge: ${judgeVerdict.verdict} (${judgeVerdict.score}점)`);
+          if (judgeVerdict.feedback) {
+            this.log(`     피드백: ${judgeVerdict.feedback}`);
+          }
+        }
         this.state.status = 'completed';
         this.state.summary.productionReady = true;
+        break;
+      }
+
+      // 3.5 Check-Act: 품질 임계값 도달 시 반복 종료
+      if (qualityScore >= this.config.qualityThreshold) {
+        this.log(`\n  🎯 품질 점수 ${qualityScore}점 ≥ 임계값 ${this.config.qualityThreshold}점 — 충분한 품질 도달`);
+        // LLM-as-a-Judge: 품질 임계값 도달 시에도 최종 검증
+        if (this.config.llmJudgeEnabled) {
+          const judgeVerdict = this.runLLMJudge(pipelineResult, qualityScore);
+          this.state.summary.llmJudgeVerdict = judgeVerdict.verdict;
+          this.log(`  ⚖️  LLM Judge: ${judgeVerdict.verdict} (${judgeVerdict.score}점)`);
+          if (judgeVerdict.feedback) {
+            this.log(`     피드백: ${judgeVerdict.feedback}`);
+          }
+        }
+        this.state.status = 'completed';
+        this.state.summary.productionReady = analysis.totalIssues === 0;
         break;
       }
 
@@ -372,6 +452,15 @@ export class AutonomousLoop {
 
         if (directResult.patchesApplied > 0) {
           this.log(`  ✅ 직접 수정 ${directResult.patchesApplied}건 완료 → 다음 사이클에서 재검증`);
+          // 학습 메모리: 수정 결과 기록
+          for (const issue of analysis.autoFixable.slice(0, 20)) {
+            this.learningMemory.recordFix(
+              issue.message,
+              'direct-patch',
+              true,
+              this.state.cycle,
+            );
+          }
         }
         if (remainingIssues.length > 0) {
           this.log(`  🔄 수동 수정 필요 ${remainingIssues.length}건 → 피드백으로 다음 사이클에 전달`);
@@ -425,6 +514,15 @@ export class AutonomousLoop {
     // 요약 생성
     this.buildSummary();
     this.printSummary();
+
+    // Phase 10-D: 학습 메모리 영속화
+    this.learningMemory.updateProjectProfile(
+      this.project.name,
+      this.state.systemAnalysis?.techStack || [],
+      this.state.summary.qualityScore,
+    );
+    this.learningMemory.save();
+    this.log(`  💾 학습 메모리 저장 완료 (${this.learningMemory.getData().issuePatterns.length}개 패턴)`);
 
     return this.state;
   }
@@ -647,6 +745,11 @@ export class AutonomousLoop {
       phasesBlocked: blockedPhases,
       humanInterventionNeeded: this.state.status === 'human-needed',
       productionReady: this.state.status === 'completed',
+      // Phase 10 필드 유지 (루프 중 이미 갱신됨)
+      qualityScore: this.state.summary.qualityScore,
+      qualityHistory: this.state.summary.qualityHistory,
+      llmJudgeVerdict: this.state.summary.llmJudgeVerdict,
+      modelsUsed: this.state.summary.modelsUsed,
     };
   }
 
@@ -665,6 +768,16 @@ export class AutonomousLoop {
     this.log(`  차단 단계:    ${s.phasesBlocked.join(', ') || '없음'}`);
     this.log(`  프로덕션:     ${s.productionReady ? '✅ 준비 완료' : '❌ 미완료'}`);
     this.log(`  인간 개입:    ${s.humanInterventionNeeded ? '⚠️ 필요' : '불필요'}`);
+    this.log(`  품질 점수:    ${s.qualityScore}/100`);
+    if (s.qualityHistory.length > 1) {
+      this.log(`  품질 추이:    ${s.qualityHistory.join(' → ')}`);
+    }
+    if (s.llmJudgeVerdict) {
+      this.log(`  LLM Judge:    ${s.llmJudgeVerdict}`);
+    }
+    if (s.modelsUsed.length > 0) {
+      this.log(`  사용 모델:    ${s.modelsUsed.join(', ')}`);
+    }
 
     if (this.state.humanNeededReasons.length > 0) {
       this.log('\n  [인간 개입 필요 사유]');
@@ -704,6 +817,21 @@ export class AutonomousLoop {
     }
     if (report.recurringFailures.length > 0) {
       this.log(`    반복 실패:      ${report.recurringFailures.length}건`);
+    }
+
+    // Phase 10-D: 학습 메모리 보고서
+    const memReport = this.learningMemory.generateReport();
+    this.log('\n  [학습 메모리 보고서]');
+    this.log(`    축적 이슈 패턴: ${memReport.totalPatterns}개`);
+    this.log(`    수정 기록:      ${memReport.totalFixes}건`);
+    this.log(`    팀 컨벤션:      ${memReport.totalConventions}개`);
+    this.log(`    평균 품질:      ${memReport.avgQuality}점`);
+    this.log(`    총 세션:        ${memReport.sessions}회`);
+    if (memReport.bestStrategies.length > 0) {
+      this.log('    최고 전략:');
+      for (const bs of memReport.bestStrategies.slice(0, 3)) {
+        this.log(`      - ${bs.strategy}: ${bs.successCount}회 성공`);
+      }
     }
 
     this.log('');
@@ -1031,11 +1159,268 @@ export class AutonomousLoop {
     return false;
   }
 
+  // ─── Phase 10-A: Check-Act 품질 점수 계산 ───
+
+  /**
+   * 파이프라인 결과를 기반으로 0~100 품질 점수를 산출합니다.
+   *
+   * 가중치 배분:
+   *   - 이슈 감점 (기본 100에서 차감): critical -15, error -5, warning -2, info -0.5
+   *   - 단계 통과율 보정: 통과 비율에 비례하여 50~100% 범위로 스케일링
+   *   - 수정 보너스: 직접 수정 성공 시 최대 +5점
+   *   - 개선 추세 보너스: 이전 사이클 대비 이슈 감소 시 +3점
+   */
+  private calculateQualityScore(
+    pipelineResult: PipelineState,
+    analysis: { totalIssues: number; autoFixable: TaskIssue[]; allPassed: boolean },
+  ): number {
+    let score = 100;
+
+    // 이슈별 감점
+    const allIssues = pipelineResult.tasks.flatMap((t) => t.result?.issues || []);
+    const criticals = allIssues.filter((i) => i.severity === 'critical').length;
+    const errors = allIssues.filter((i) => i.severity === 'error').length;
+    const warnings = allIssues.filter((i) => i.severity === 'warning').length;
+    const infos = allIssues.filter((i) => i.severity === 'info').length;
+
+    score -= criticals * 15;
+    score -= errors * 5;
+    score -= warnings * 2;
+    score -= infos * 0.5;
+
+    // 단계 통과율 보정 (50~100% 범위)
+    const totalPhases = pipelineResult.tasks.length;
+    const passedPhases = pipelineResult.tasks.filter((t) => t.status === 'completed').length;
+    const phaseRatio = totalPhases > 0 ? passedPhases / totalPhases : 0;
+    score = score * (0.5 + 0.5 * phaseRatio);
+
+    // 수정 보너스
+    if (this.state.fixHistory.length > 0) {
+      const lastFix = this.state.fixHistory[this.state.fixHistory.length - 1];
+      if (lastFix.fixedCount > 0) {
+        score += Math.min(5, lastFix.fixedCount);
+      }
+    }
+
+    // 개선 추세 보너스 (이전 사이클 대비)
+    const prevHistory = this.state.summary.qualityHistory;
+    if (prevHistory.length > 0) {
+      const prevScore = prevHistory[prevHistory.length - 1];
+      if (score > prevScore) {
+        score += 3; // 개선 추세 보너스
+      }
+    }
+
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  // ─── Phase 10-B: 다중 모델 선택 ───
+
+  /**
+   * 작업 복잡도에 따라 최적 AI 모델을 선택합니다.
+   *
+   * 선택 기준:
+   *   - opus:   보안 크리티컬, 아키텍처 수준 분석, 복잡한 리팩토링
+   *   - sonnet:  일반 리뷰, 중간 복잡도 수정, 테스트 생성
+   *   - haiku:   단순 린트 수정, 포맷팅, 변수명 변경 등 경량 작업
+   */
+  private selectModelForTask(
+    phase: TaskPhase,
+    issueCount: number,
+    severity: string,
+  ): { model: string; reason: string } {
+    if (!this.config.multiModelEnabled) {
+      return { model: 'sonnet', reason: '다중 모델 비활성화 — 기본 모델' };
+    }
+
+    // Critical 보안 또는 아키텍처 분석 → Opus (최고 정밀도)
+    if (severity === 'critical' || phase === 'security') {
+      return { model: 'opus', reason: '보안/크리티컬 이슈 — 최고 정밀도 필요' };
+    }
+
+    // 많은 이슈 또는 복잡한 분석 → Sonnet (균형)
+    if (issueCount > 10 || phase === 'review') {
+      return { model: 'sonnet', reason: '복잡한 분석 — 균형 모델' };
+    }
+
+    // 단순/빠른 작업 → Haiku (속도 우선)
+    if (issueCount <= 3 && (phase === 'code' || phase === 'test')) {
+      return { model: 'haiku', reason: '단순 수정 — 빠른 처리' };
+    }
+
+    return { model: 'sonnet', reason: '기본 모델' };
+  }
+
+  // ─── Phase 10-C: LLM-as-a-Judge ───
+
+  /**
+   * 보조 AI 모델이 파이프라인 출력 품질을 독립적으로 평가합니다.
+   *
+   * Judge 평가 기준:
+   *   1. 이슈 해결 완성도 — 발견된 이슈 중 수정된 비율
+   *   2. 코드 품질 — 남은 이슈의 심각도 분포
+   *   3. 테스트 충분성 — 테스트 통과율과 커버리지 추세
+   *   4. 보안 상태 — 크리티컬 보안 이슈 부재 여부
+   *
+   * AI 프로바이더 미설정 시 규칙 기반 평가로 대체합니다.
+   */
+  private runLLMJudge(
+    pipelineResult: PipelineState,
+    qualityScore: number,
+  ): { verdict: string; score: number; feedback: string } {
+    const allIssues = pipelineResult.tasks.flatMap((t) => t.result?.issues || []);
+    const criticals = allIssues.filter((i) => i.severity === 'critical').length;
+    const errors = allIssues.filter((i) => i.severity === 'error').length;
+    const warnings = allIssues.filter((i) => i.severity === 'warning').length;
+    const passedTasks = pipelineResult.tasks.filter((t) => t.status === 'completed').length;
+    const totalTasks = pipelineResult.tasks.length;
+
+    // AI Judge 시도
+    const aiVerdict = this.tryAIJudge(pipelineResult, qualityScore);
+    if (aiVerdict) return aiVerdict;
+
+    // AI 미사용 시 규칙 기반 Judge
+    return this.ruleBasedJudge(criticals, errors, warnings, passedTasks, totalTasks, qualityScore);
+  }
+
+  /**
+   * AI 프로바이더를 통한 LLM Judge 평가
+   */
+  private tryAIJudge(
+    pipelineResult: PipelineState,
+    qualityScore: number,
+  ): { verdict: string; score: number; feedback: string } | null {
+    try {
+      const { autoDetectProvider, generateCode } = require('./ai-provider');
+      const aiConfig = autoDetectProvider();
+      if (!aiConfig) return null;
+
+      const allIssues = pipelineResult.tasks.flatMap((t) => t.result?.issues || []);
+      const phaseSummary = pipelineResult.tasks.map((t) =>
+        `${t.phase}: ${t.status} (${t.result?.issues.length || 0}건)`,
+      ).join('\n');
+
+      const topIssues = allIssues.slice(0, 10).map((i) =>
+        `[${i.severity}] ${i.message}${i.file ? ` (${i.file})` : ''}`,
+      ).join('\n');
+
+      const systemPrompt = `당신은 코드 리뷰 품질 심사관(Judge)입니다.
+파이프라인 결과를 분석하고 JSON으로 평가해주세요.
+
+응답 형식 (JSON만 출력):
+{"verdict": "approve|needs-work|reject", "score": 0-100, "feedback": "한줄 피드백"}
+
+평가 기준:
+- approve: 크리티컬/에러 0건, 품질 90+
+- needs-work: 에러 1~5건 또는 품질 70~89
+- reject: 크리티컬 존재 또는 품질 <70`;
+
+      const userPrompt = `품질 점수: ${qualityScore}/100
+
+파이프라인 결과:
+${phaseSummary}
+
+주요 이슈:
+${topIssues || '없음'}
+
+수정 이력: ${this.state.fixHistory.length}건`;
+
+      // 비동기 호출을 동기화 (execSync 기반)
+      const fs = require('fs');
+      const pathMod = require('path');
+      const { execSync: execSyncLocal } = require('child_process');
+      const tmpDir = pathMod.join(require('os').tmpdir(), '.ag-review-ai');
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const scriptPath = pathMod.join(tmpDir, `_judge_${Date.now()}.js`);
+      const providerPath = pathMod.resolve(__dirname, 'ai-provider').replace(/\\/g, '\\\\');
+
+      const script = `
+const { generateCode } = require('${providerPath}');
+const config = ${JSON.stringify(aiConfig)};
+const request = { prompt: ${JSON.stringify(userPrompt)}, systemPrompt: ${JSON.stringify(systemPrompt)}, maxTokens: 512 };
+generateCode(config, request).then(r => {
+  if (r.success) { process.stdout.write(JSON.stringify({ ok: true, text: r.code || '' })); }
+  else { process.stdout.write(JSON.stringify({ ok: false, error: r.error })); }
+}).catch(e => { process.stdout.write(JSON.stringify({ ok: false, error: e.message })); });`;
+
+      fs.writeFileSync(scriptPath, script);
+      try {
+        const output = execSyncLocal(`node "${scriptPath}"`, {
+          encoding: 'utf-8',
+          timeout: 30000,
+          maxBuffer: 5 * 1024 * 1024,
+        });
+        const parsed = JSON.parse(output);
+        if (parsed.ok && parsed.text) {
+          // JSON 파싱 시도
+          const jsonMatch = parsed.text.match(/\{[\s\S]*?\}/);
+          if (jsonMatch) {
+            const judgeResult = JSON.parse(jsonMatch[0]);
+            return {
+              verdict: judgeResult.verdict || 'needs-work',
+              score: judgeResult.score || qualityScore,
+              feedback: judgeResult.feedback || '',
+            };
+          }
+        }
+      } finally {
+        try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+      }
+    } catch { /* AI 실패 → 규칙 기반으로 fallback */ }
+    return null;
+  }
+
+  /**
+   * AI 없이 규칙 기반으로 Judge 평가
+   */
+  private ruleBasedJudge(
+    criticals: number,
+    errors: number,
+    warnings: number,
+    passedTasks: number,
+    totalTasks: number,
+    qualityScore: number,
+  ): { verdict: string; score: number; feedback: string } {
+    if (criticals > 0) {
+      return {
+        verdict: 'reject',
+        score: Math.min(qualityScore, 30),
+        feedback: `크리티컬 이슈 ${criticals}건 — 즉시 수정 필요`,
+      };
+    }
+
+    if (errors > 5 || qualityScore < 70) {
+      return {
+        verdict: 'reject',
+        score: qualityScore,
+        feedback: `에러 ${errors}건, 품질 ${qualityScore}점 — 추가 수정 필요`,
+      };
+    }
+
+    if (errors > 0 || qualityScore < 90) {
+      return {
+        verdict: 'needs-work',
+        score: qualityScore,
+        feedback: `에러 ${errors}건, 경고 ${warnings}건 — 개선 여지 있음 (${passedTasks}/${totalTasks} 단계 통과)`,
+      };
+    }
+
+    return {
+      verdict: 'approve',
+      score: qualityScore,
+      feedback: `모든 단계 통과, 품질 ${qualityScore}점 — 프로덕션 준비 완료`,
+    };
+  }
+
   private log(message: string): void {
     console.log(message);
   }
 
   getState(): LoopState {
     return { ...this.state };
+  }
+
+  getLearningMemory(): LearningMemory {
+    return this.learningMemory;
   }
 }
