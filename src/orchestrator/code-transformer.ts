@@ -148,8 +148,11 @@ export class CodeTransformer {
           code = result.code;
           changes.push(...result.changes);
         }
-      } catch {
-        // 개별 변환 실패는 무시하고 계속 진행
+      } catch (err: unknown) {
+        // 개별 변환 실패는 전체를 중단하지 않고 계속 진행
+        if (process.env.AG_DEBUG) {
+          console.debug(`[CodeTransformer] ${transform} 변환 실패 (${filePath}): ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
 

@@ -838,6 +838,9 @@ export class TesterAgent extends BaseSubAgent {
       const jsonMatch = output.match(/\{[\s\S]*"numTotalTests"[\s\S]*\}/);
       if (jsonMatch) {
         const result = JSON.parse(jsonMatch[0]);
+        if (!result || typeof result !== 'object' || typeof result.numTotalTests !== 'number') {
+          throw new Error('Jest JSON 출력 구조가 올바르지 않음');
+        }
         const passed = result.numFailedTests === 0;
 
         logs.push(`[TESTER] Tests: ${result.numPassedTests} passed, ${result.numFailedTests} failed, ${result.numTotalTests} total`);

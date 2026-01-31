@@ -381,8 +381,11 @@ export class ReviewerAgent extends BaseSubAgent {
     try {
       // JSON 배열 추출 (코드블록이나 앞뒤 텍스트 제거)
       const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
+      if (!jsonMatch) {
+        logs.push('[REVIEWER] AI 응답에서 JSON 배열을 추출할 수 없음');
+      } else {
         const aiIssues: Array<{ file?: string; severity?: string; message?: string; suggestion?: string }> = JSON.parse(jsonMatch[0]);
+        if (!Array.isArray(aiIssues)) throw new Error('AI 응답이 배열이 아님');
         for (const ai of aiIssues) {
           if (!ai.message) continue;
           const sev = ai.severity === 'warning' ? 'warning' as const : 'info' as const;
@@ -393,8 +396,8 @@ export class ReviewerAgent extends BaseSubAgent {
         }
         logs.push(`[REVIEWER] ✅ AI 심층 분석 완료: ${issues.length}건 이슈 발견 (${targets.length}개 파일 분석)`);
       }
-    } catch {
-      logs.push('[REVIEWER] ⚠️  AI 응답 파싱 실패 — 정규식 분석 결과만 사용');
+    } catch (err: unknown) {
+      logs.push(`[REVIEWER] ⚠️  AI 응답 파싱 실패: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     return { issues, logs };

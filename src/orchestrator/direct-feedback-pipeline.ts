@@ -222,8 +222,11 @@ export class PatchGenerator {
             oldCode = lines[issue.line - 1];
           }
         }
-      } catch {
-        // 파일 읽기 실패는 무시
+      } catch (err: unknown) {
+        // 파일 읽기 실패: 패치 생성 시 oldCode 없이 진행
+        if (process.env.AG_DEBUG) {
+          console.debug(`[PatchGenerator] 파일 읽기 실패 (${issue.file}): ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       patches.push({

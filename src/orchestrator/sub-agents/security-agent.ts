@@ -153,6 +153,7 @@ export class SecurityAgent extends BaseSubAgent {
 
         try {
           const audit = JSON.parse(output);
+          if (!audit || typeof audit !== 'object') throw new Error('npm audit 출력이 올바른 JSON이 아님');
           const vulns = audit.metadata?.vulnerabilities || {};
           const total = (vulns.critical || 0) + (vulns.high || 0) + (vulns.moderate || 0) + (vulns.low || 0);
 
@@ -166,8 +167,8 @@ export class SecurityAgent extends BaseSubAgent {
           if (vulns.moderate > 0) {
             issues.push(this.createIssue('warning', `${vulns.moderate} moderate vulnerabilities in dependencies`));
           }
-        } catch {
-          logs.push('[SECURITY] npm audit completed (no JSON output)');
+        } catch (err: unknown) {
+          logs.push(`[SECURITY] npm audit 파싱 실패: ${err instanceof Error ? err.message : 'JSON 파싱 오류'}`);
         }
       } catch {
         logs.push('[SECURITY] npm audit not available');
@@ -444,8 +445,11 @@ export class SecurityAgent extends BaseSubAgent {
 
     try {
       const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
+      if (!jsonMatch) {
+        logs.push('[SECURITY] AI 응답에서 JSON 배열을 추출할 수 없음');
+      } else {
         const aiIssues: Array<{ file?: string; severity?: string; message?: string; suggestion?: string }> = JSON.parse(jsonMatch[0]);
+        if (!Array.isArray(aiIssues)) throw new Error('AI 응답이 배열이 아님');
         for (const ai of aiIssues) {
           if (!ai.message) continue;
           const sevMap: Record<string, TaskIssue['severity']> = { critical: 'critical', error: 'error', warning: 'warning' };
@@ -457,8 +461,8 @@ export class SecurityAgent extends BaseSubAgent {
         }
         logs.push(`[SECURITY] ✅ AI 심층 보안 분석 완료: ${issues.length}건 취약점 발견 (${sensitiveFiles.length}개 파일 분석)`);
       }
-    } catch {
-      logs.push('[SECURITY] ⚠️  AI 응답 파싱 실패 — 정규식 분석 결과만 사용');
+    } catch (err: unknown) {
+      logs.push(`[SECURITY] ⚠️  AI 응답 파싱 실패: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     return { issues, logs };

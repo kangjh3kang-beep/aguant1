@@ -315,7 +315,7 @@ generateCode(config, request).then(r => {
 });
 `;
 
-      fs.writeFileSync(scriptPath, script);
+      fs.writeFileSync(scriptPath, script, { mode: 0o600 });
       try {
         const output = execSyncLocal(`node "${scriptPath}"`, {
           encoding: 'utf-8',
@@ -323,11 +323,22 @@ generateCode(config, request).then(r => {
           maxBuffer: 10 * 1024 * 1024,
         });
         const result = JSON.parse(output);
-        return result.ok ? result.text : null;
+        if (result && typeof result === 'object' && result.ok) {
+          return result.text || null;
+        }
+        return null;
       } finally {
-        try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+        try { fs.unlinkSync(scriptPath); } catch (e: unknown) {
+          if (e && typeof e === 'object' && (e as NodeJS.ErrnoException).code !== 'ENOENT') {
+            console.debug(`[BaseAgent] 임시 파일 정리 실패: ${scriptPath}`);
+          }
+        }
       }
-    } catch {
+    } catch (err: unknown) {
+      // AI 호출 실패 시 null 반환 (호출측에서 graceful 처리)
+      if (process.env.AG_DEBUG) {
+        console.debug(`[BaseAgent] AI 호출 실패: ${err instanceof Error ? err.message : String(err)}`);
+      }
       return null;
     }
   }
