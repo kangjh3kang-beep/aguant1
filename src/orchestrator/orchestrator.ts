@@ -73,7 +73,10 @@ export class Orchestrator {
     try {
       const data = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
       return Array.isArray(data) ? data : [];
-    } catch {
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.warn('[Orchestrator] 히스토리 로드 실패:', err instanceof Error ? err.message : String(err));
+      }
       return [];
     }
   }
@@ -196,7 +199,7 @@ function detectTechStack(projectPath: string): ProjectSpec['techStack'] {
   if (exists('package.json')) {
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(projectPath, 'package.json'), 'utf-8'));
-      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+      const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
       if (allDeps.next) framework = 'Next.js';
       else if (allDeps.nuxt) framework = 'Nuxt';
       else if (allDeps.react) framework = 'React';
@@ -207,8 +210,10 @@ function detectTechStack(projectPath: string): ProjectSpec['techStack'] {
       else if (allDeps.fastify) framework = 'Fastify';
 
       if (allDeps.electron) runtime = 'Electron';
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.warn('[Orchestrator] 기술 스택 감지 실패:', err instanceof Error ? err.message : String(err));
+      }
     }
   }
 

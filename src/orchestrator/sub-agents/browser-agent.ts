@@ -401,7 +401,7 @@ main().catch(err => {
       const pkgPath = path.join(projectPath, 'package.json');
       if (fs.existsSync(pkgPath)) {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+        const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
         return !!(allDeps.puppeteer || allDeps['puppeteer-core']);
       }
     } catch {

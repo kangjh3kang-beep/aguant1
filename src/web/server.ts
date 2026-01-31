@@ -41,7 +41,7 @@ function validateProjectPath(userPath: string | undefined, fallback: string): st
   return resolved;
 }
 
-export function createServer(defaultProjectPath?: string) {
+export function createServer(defaultProjectPath?: string): express.Express {
   const app = express();
   app.use(express.json());
   app.use(express.static(path.join(__dirname, '..', '..', 'public')));

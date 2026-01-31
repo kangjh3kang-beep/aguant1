@@ -881,7 +881,7 @@ export class AutonomousLoop {
       if (fs.existsSync(pkgPath)) {
         try {
           const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-          depCount = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).length;
+          depCount = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) }).length;
         } catch { /* skip */ }
       }
 

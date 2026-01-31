@@ -760,7 +760,7 @@ export class TesterAgent extends BaseSubAgent {
     if (fs.existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+        const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
         if (allDeps.vitest) return 'vitest';
         if (allDeps.jest) return 'jest';
         if (allDeps.mocha) return 'mocha';

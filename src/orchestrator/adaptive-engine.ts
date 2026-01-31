@@ -282,8 +282,10 @@ export class FailurePatternDB {
         JSON.stringify({ patterns: Array.from(this.patterns.values()) }, null, 2),
         'utf-8',
       );
-    } catch {
-      // 저장 실패는 무시 (다음에 재시도)
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.warn('[AdaptiveEngine] 저장 실패:', err instanceof Error ? err.message : String(err));
+      }
     }
   }
 }

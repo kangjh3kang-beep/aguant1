@@ -101,7 +101,13 @@ export class ASTTransformer {
       return { success: false, appliedCount: 0, changes: [], error: 'TypeScript 파일만 지원' };
     }
 
-    const originalCode = fs.readFileSync(fullPath, 'utf-8');
+    let originalCode: string;
+    try {
+      originalCode = fs.readFileSync(fullPath, 'utf-8');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return { success: false, appliedCount: 0, changes: [], error: `파일 읽기 실패: ${errMsg}` };
+    }
 
     try {
       const sourceFile = ts.createSourceFile(
@@ -154,7 +160,12 @@ export class ASTTransformer {
       }
 
       // 변환 저장
-      fs.writeFileSync(fullPath, transformedCode, 'utf-8');
+      try {
+        fs.writeFileSync(fullPath, transformedCode, 'utf-8');
+      } catch (writeErr: unknown) {
+        const writeMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+        return { success: false, appliedCount: 0, changes: [], error: `파일 쓰기 실패: ${writeMsg}` };
+      }
 
       return {
         success: true,
@@ -226,7 +237,12 @@ export class ASTTransformer {
     if (!fs.existsSync(fullPath)) return { issues };
     if (!fullPath.endsWith('.ts') && !fullPath.endsWith('.tsx')) return { issues };
 
-    const code = fs.readFileSync(fullPath, 'utf-8');
+    let code: string;
+    try {
+      code = fs.readFileSync(fullPath, 'utf-8');
+    } catch {
+      return { issues };
+    }
     const sourceFile = ts.createSourceFile(
       filePath, code, ts.ScriptTarget.Latest, true,
     );
@@ -308,7 +324,13 @@ export class ASTTransformer {
       return { success: false, appliedCount: 0, changes: [], error: `파일 없음: ${filePath}` };
     }
 
-    const code = fs.readFileSync(fullPath, 'utf-8');
+    let code: string;
+    try {
+      code = fs.readFileSync(fullPath, 'utf-8');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return { success: false, appliedCount: 0, changes: [], error: `파일 읽기 실패: ${errMsg}` };
+    }
     const sourceFile = ts.createSourceFile(
       filePath, code, ts.ScriptTarget.Latest, true,
     );
@@ -345,7 +367,12 @@ export class ASTTransformer {
       };
     }
 
-    fs.writeFileSync(fullPath, newCode, 'utf-8');
+    try {
+      fs.writeFileSync(fullPath, newCode, 'utf-8');
+    } catch (writeErr: unknown) {
+      const writeMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      return { success: false, appliedCount: 0, changes: [], error: `파일 쓰기 실패: ${writeMsg}` };
+    }
 
     return {
       success: true,

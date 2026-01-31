@@ -104,7 +104,13 @@ export class LearningMemory {
   constructor(projectRootPath: string) {
     const dir = path.join(projectRootPath, '.ag-review');
     if (!fs.existsSync(dir)) {
-      try { fs.mkdirSync(dir, { recursive: true }); } catch { /* skip */ }
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) {
+          console.warn('[LearningMemory] 디렉토리 생성 실패:', err instanceof Error ? err.message : String(err));
+        }
+      }
     }
     this.storagePath = path.join(dir, 'learning-memory.json');
     this.data = this.load();

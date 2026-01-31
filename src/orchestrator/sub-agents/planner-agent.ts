@@ -330,7 +330,7 @@ export class PlannerAgent extends BaseSubAgent {
     if (fs.existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+        const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
         depCount = Object.keys(allDeps).length;
         const depMap: [string, string][] = [
           ['react', 'React'], ['vue', 'Vue'], ['@angular/core', 'Angular'],

@@ -480,7 +480,7 @@ export class SecurityAgent extends BaseSubAgent {
     if (fs.existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+        const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
 
         // 보안 필수 패키지 검증
         const hasExpress = !!allDeps.express || !!allDeps.fastify || !!allDeps['@nestjs/core'];
