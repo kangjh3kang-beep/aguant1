@@ -195,7 +195,13 @@ export class CodeValidator {
       }
 
       // 임시 파일 정리
-      try { fs.unlinkSync(tempFile); } catch { /* non-critical: temp file cleanup */ }
+      try {
+        fs.unlinkSync(tempFile);
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) {
+          console.debug('[CodeValidator] temp file cleanup failure:', err instanceof Error ? err.message : String(err));
+        }
+      }
     } catch {
       warnings.push('TypeScript 검증 환경 설정 실패');
     }

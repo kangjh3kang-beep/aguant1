@@ -205,8 +205,8 @@ function findChromePath(): string | undefined {
       { encoding: 'utf-8', timeout: 5000 },
     ).trim();
     if (result) return result.split('\n')[0];
-  } catch {
-    // ignore
+  } catch (err: unknown) {
+    if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] chrome path detection:', err instanceof Error ? err.message : String(err)); }
   }
 
   return undefined;
@@ -299,8 +299,8 @@ export class DevServerManager {
             this.process.kill('SIGTERM');
           }
         }
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] process kill SIGTERM:', err instanceof Error ? err.message : String(err)); }
       }
       this.process = null;
       this.serverUrl = null;
@@ -322,8 +322,8 @@ export class DevServerManager {
         if (scripts.dev) return 'npm run dev';
         if (scripts.start) return 'npm start';
         if (scripts.serve) return 'npm run serve';
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] package.json parse:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -557,8 +557,8 @@ export class PerformanceAnalyzer {
         if (lcpEntries && lcpEntries.length > 0) {
           lcp = lcpEntries[lcpEntries.length - 1].startTime;
         }
-      } catch {
-        // LCP API 미지원 환경
+      } catch (err: unknown) {
+        if (typeof process !== 'undefined' && process.env?.AG_DEBUG) { console.debug('[BrowserAutomation] LCP API not supported:', err instanceof Error ? err.message : String(err)); }
       }
 
       // CLS
@@ -570,8 +570,8 @@ export class PerformanceAnalyzer {
             .filter((e: any) => !e.hadRecentInput)
             .reduce((sum: number, e: any) => sum + e.value, 0);
         }
-      } catch {
-        // Layout Shift API 미지원
+      } catch (err: unknown) {
+        if (typeof process !== 'undefined' && process.env?.AG_DEBUG) { console.debug('[BrowserAutomation] Layout Shift API not supported:', err instanceof Error ? err.message : String(err)); }
       }
 
       // Navigation Timing
@@ -1116,8 +1116,8 @@ export class FlowRunner {
             `${flow.name}-FAIL-step-${stepResults.length - 1}`,
           );
           screenshots.push(failScreenshot);
-        } catch {
-          // ignore screenshot failure
+        } catch (err: unknown) {
+          if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] screenshot on flow step failure:', err instanceof Error ? err.message : String(err)); }
         }
       }
     }
@@ -1126,8 +1126,8 @@ export class FlowRunner {
     let performance: PerformanceMetrics | undefined;
     try {
       performance = await this.performanceAnalyzer.measure(page);
-    } catch {
-      // ignore performance measurement failure
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] flow performance measurement:', err instanceof Error ? err.message : String(err)); }
     }
 
     return {
@@ -1206,8 +1206,8 @@ export class BrowserSession {
     if (this.browser) {
       try {
         await this.browser.close();
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] browser close:', err instanceof Error ? err.message : String(err)); }
       }
       this.browser = null;
     }
@@ -1385,8 +1385,8 @@ export class BrowserAutomation {
             if (snapshot.screenshot) {
               try {
                 fs.copyFileSync(snapshot.screenshot, baselinePath);
-              } catch {
-                // ignore
+              } catch (err: unknown) {
+                if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] baseline screenshot copy:', err instanceof Error ? err.message : String(err)); }
               }
             }
           }
@@ -1532,8 +1532,8 @@ export class BrowserAutomation {
     // 내비게이션
     try {
       await page.goto(url, { waitUntil: 'networkidle2', timeout: this.config.waitTimeout });
-    } catch {
-      // timeout은 무시 (부분 로드도 분석)
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] page navigation timeout (partial load):', err instanceof Error ? err.message : String(err)); }
     }
 
     // 타이틀
@@ -1543,8 +1543,8 @@ export class BrowserAutomation {
     let screenshot: string | undefined;
     try {
       screenshot = await this.screenshotEngine.capture(page, name);
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] screenshot capture:', err instanceof Error ? err.message : String(err)); }
     }
 
     // 성능 측정
@@ -1552,8 +1552,8 @@ export class BrowserAutomation {
     if (this.config.performanceEnabled) {
       try {
         performance = await this.performanceAnalyzer.measure(page);
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] performance measurement:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -1562,8 +1562,8 @@ export class BrowserAutomation {
     if (this.config.a11yEnabled) {
       try {
         a11yViolations = await this.a11yAuditor.audit(page);
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] a11y audit:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -1599,8 +1599,8 @@ export class BrowserAutomation {
             if (href.startsWith(origin) && !href.includes('#') && !urls.includes(href) && href !== base) {
               urls.push(href);
             }
-          } catch {
-            // ignore invalid URLs
+          } catch (err: unknown) {
+            if (typeof process !== 'undefined' && process.env?.AG_DEBUG) { console.debug('[BrowserAutomation] invalid URL parse:', err instanceof Error ? err.message : String(err)); }
           }
         });
 
@@ -1610,7 +1610,7 @@ export class BrowserAutomation {
       await page.close();
       return links.slice(0, 20);
     } catch {
-      try { await page.close(); } catch { /* non-critical: page close cleanup */ }
+      try { await page.close(); } catch (err: unknown) { if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] page close cleanup:', err instanceof Error ? err.message : String(err)); } }
       return [];
     }
   }

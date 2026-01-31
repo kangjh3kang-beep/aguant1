@@ -388,8 +388,8 @@ generateCode(config, request).then(r => {
         const relPath = path.relative(projectPath, file);
         contextParts.push(`// ${relPath}\n${content}`);
         currentLen += content.length;
-      } catch {
-        // skip
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[CoderAgent] context file read:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -411,7 +411,9 @@ generateCode(config, request).then(r => {
             files.push(fullPath);
           }
         }
-      } catch { /* non-critical: directory scan failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[CoderAgent] source file scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
     scanDir(projectPath, 0);
     // index/types/main 파일 우선
@@ -647,8 +649,8 @@ Follow ALL expert coding standards above. Output code only.
             }
           }
         }
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[CoderAgent] analyze files scan dir:', err instanceof Error ? err.message : String(err)); }
       }
     };
 

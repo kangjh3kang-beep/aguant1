@@ -111,7 +111,9 @@ const TEST_ERROR_PATTERNS: ErrorPattern[] = [
           fs.writeFileSync(fullPath, content, 'utf-8');
           return true;
         }
-      } catch { /* non-critical: scan or file operation failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[TesterAgent] file operation in timeout fix:', err instanceof Error ? err.message : String(err)); }
+      }
       return false;
     },
   },
@@ -399,10 +401,14 @@ export class TesterAgent extends BaseSubAgent {
               if (fileModified) {
                 fs.writeFileSync(fullPath, content, 'utf-8');
               }
-            } catch { /* non-critical: scan or file operation failure */ }
+            } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[TesterAgent] test file read/write:', err instanceof Error ? err.message : String(err)); }
+            }
           }
         }
-      } catch { /* non-critical: scan or file operation failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[TesterAgent] test quality scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
 
     scanDir(projectPath, 0);
@@ -446,7 +452,9 @@ export class TesterAgent extends BaseSubAgent {
             }
           }
         }
-      } catch { /* non-critical: scan or file operation failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[TesterAgent] coverage gap scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
 
     scanDir(projectPath, 0);
@@ -750,7 +758,9 @@ export class TesterAgent extends BaseSubAgent {
         logs.push(`[TESTER] ── 소스 코드 선행 수정 ──`);
         logs.push(`[TESTER] ✓ CodeTransformer로 ${cleanupResult.changed}개 파일 정리 (미사용 import, 빈 catch)`);
       }
-    } catch { /* non-critical: CodeTransformer 실패는 테스트 실행에 영향 없음 */ }
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[TesterAgent] CodeTransformer cleanup:', err instanceof Error ? err.message : String(err)); }
+    }
 
     return { logs, fixedCount };
   }
@@ -766,8 +776,8 @@ export class TesterAgent extends BaseSubAgent {
         if (allDeps.mocha) return 'mocha';
         if (allDeps.cypress) return 'cypress';
         if (allDeps.playwright || allDeps['@playwright/test']) return 'playwright';
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[TesterAgent] package.json parse:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -864,8 +874,8 @@ export class TesterAgent extends BaseSubAgent {
 
         return { passed, logs, issues };
       }
-    } catch {
-      // JSON 파싱 실패 시 텍스트 분석으로 폴백
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[TesterAgent] Jest JSON parse fallback:', err instanceof Error ? err.message : String(err)); }
     }
 
     const hasFailure = /fail|FAIL/i.test(output);

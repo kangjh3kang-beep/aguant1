@@ -872,7 +872,11 @@ export class AutonomousLoop {
               }
             }
           }
-        } catch { /* non-critical: scan or file operation failure */ }
+        } catch (err: unknown) {
+          if (process.env.AG_DEBUG) {
+            console.debug('[AutonomousLoop] scanDir failure:', err instanceof Error ? err.message : String(err));
+          }
+        }
       };
       scanDir(projectPath, 0);
 
@@ -882,16 +886,28 @@ export class AutonomousLoop {
         try {
           const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
           depCount = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) }).length;
-        } catch { /* non-critical: scan or file operation failure */ }
+        } catch (err: unknown) {
+          if (process.env.AG_DEBUG) {
+            console.debug('[AutonomousLoop] package.json parse failure:', err instanceof Error ? err.message : String(err));
+          }
+        }
       }
 
       const reqPath = path.join(projectPath, 'requirements.txt');
       if (fs.existsSync(reqPath)) {
         try {
           depCount = fs.readFileSync(reqPath, 'utf-8').split('\n').filter((l: string) => l.trim() && !l.startsWith('#')).length;
-        } catch { /* non-critical: scan or file operation failure */ }
+        } catch (err: unknown) {
+          if (process.env.AG_DEBUG) {
+            console.debug('[AutonomousLoop] requirements.txt read failure:', err instanceof Error ? err.message : String(err));
+          }
+        }
       }
-    } catch { /* non-critical: scan or file operation failure */ }
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.debug('[AutonomousLoop] system analysis scan failure:', err instanceof Error ? err.message : String(err));
+      }
+    }
 
     // 프로젝트 유형 추론
     const projectType = this.inferProjectType(components, techStack);

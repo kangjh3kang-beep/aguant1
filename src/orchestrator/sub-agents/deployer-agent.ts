@@ -377,10 +377,14 @@ export class DeployerAgent extends BaseSubAgent {
           const full = path.join(dir, entry.name);
           if (entry.isDirectory()) { scanDir(full, depth + 1); }
           else if (/\.(ts|js)$/.test(entry.name) && parts.join('').length < 50000) {
-            try { parts.push(fs.readFileSync(full, 'utf-8')); } catch { /* non-critical: scan or file operation failure */ }
+            try { parts.push(fs.readFileSync(full, 'utf-8')); } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[DeployerAgent] source file read:', err instanceof Error ? err.message : String(err)); }
+            }
           }
         }
-      } catch { /* non-critical: scan or file operation failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[DeployerAgent] source file scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
     scanDir(projectPath, 0);
     return parts.join('\n');
@@ -396,10 +400,14 @@ export class DeployerAgent extends BaseSubAgent {
         if (entry.isDirectory()) {
           total += this.getDirSize(full);
         } else {
-          try { total += fs.statSync(full).size; } catch { /* non-critical: scan or file operation failure */ }
+          try { total += fs.statSync(full).size; } catch (err: unknown) {
+            if (process.env.AG_DEBUG) { console.debug('[DeployerAgent] file stat:', err instanceof Error ? err.message : String(err)); }
+          }
         }
       }
-    } catch { /* non-critical: scan or file operation failure */ }
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[DeployerAgent] dir size scan:', err instanceof Error ? err.message : String(err)); }
+    }
     return total;
   }
 

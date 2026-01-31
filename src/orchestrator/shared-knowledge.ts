@@ -299,8 +299,10 @@ export class EventBus {
     for (const handler of handlers) {
       try {
         handler(full);
-      } catch {
-        // 핸들러 오류는 무시 (파이프라인 중단 방지)
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) {
+          console.debug('[EventBus] event handler error:', err instanceof Error ? err.message : String(err));
+        }
       }
     }
   }

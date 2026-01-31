@@ -196,8 +196,10 @@ export class CodeTransformer {
             });
           }
         }
-      } catch {
-        // AST 변환 실패는 무시 (regex 변환 결과는 유지)
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) {
+          console.debug('[CodeTransformer] AST transform failure:', err instanceof Error ? err.message : String(err));
+        }
       }
     }
 
@@ -942,8 +944,10 @@ export class CodeTransformer {
         });
         // tsc가 설치되어 있으면 빠른 체크 (timeout 짧게)
         // 여기서는 구문 검증만으로 충분하므로 pass
-      } catch {
-        // tsc 없으면 구문 검증만
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) {
+          console.debug('[CodeTransformer] tsc version check failure:', err instanceof Error ? err.message : String(err));
+        }
       }
     }
 
@@ -969,8 +973,10 @@ export class CodeTransformer {
           files.push(path.relative(this.projectPath, fullPath));
         }
       }
-    } catch {
-      // 디렉토리 접근 불가는 무시
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.debug('[CodeTransformer] scanFiles directory access failure:', err instanceof Error ? err.message : String(err));
+      }
     }
 
     return files;

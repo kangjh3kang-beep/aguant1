@@ -246,13 +246,13 @@ export class SecurityAgent extends BaseSubAgent {
                   }));
                 }
               }
-            } catch {
-              // skip unreadable files
+            } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[SecurityAgent] skip unreadable file:', err instanceof Error ? err.message : String(err)); }
             }
           }
         }
-      } catch {
-        // skip unreadable dirs
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[SecurityAgent] skip unreadable dir:', err instanceof Error ? err.message : String(err)); }
       }
     };
 
@@ -332,13 +332,13 @@ export class SecurityAgent extends BaseSubAgent {
                   issues.push(this.createIssue('warning', msg, { file: relPath, suggestion, autoFixable: false }));
                 }
               }
-            } catch {
-              // skip
+            } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[SecurityAgent] SAST file read:', err instanceof Error ? err.message : String(err)); }
             }
           }
         }
-      } catch {
-        // skip
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[SecurityAgent] SAST scan dir:', err instanceof Error ? err.message : String(err)); }
       }
     };
 
@@ -395,11 +395,15 @@ export class SecurityAgent extends BaseSubAgent {
                     content: content.length > 3000 ? content.slice(0, 3000) + '\n// ... (truncated)' : content,
                   });
                 }
-              } catch { /* non-critical: scan or file operation failure */ }
+              } catch (err: unknown) {
+                if (process.env.AG_DEBUG) { console.debug('[SecurityAgent] sensitive file read:', err instanceof Error ? err.message : String(err)); }
+              }
             }
           }
         }
-      } catch { /* non-critical: scan or file operation failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[SecurityAgent] sensitive file scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
     collectFiles(projectPath, 0);
 
@@ -516,7 +520,9 @@ export class SecurityAgent extends BaseSubAgent {
             suggestion: 'argon2 또는 bcrypt로 비밀번호를 해싱하세요',
           }));
         }
-      } catch { /* non-critical: scan or file operation failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[SecurityAgent] package.json auth audit:', err instanceof Error ? err.message : String(err)); }
+      }
     }
 
     // .gitignore 필수 항목 검증

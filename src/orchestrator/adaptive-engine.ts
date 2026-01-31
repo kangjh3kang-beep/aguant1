@@ -266,8 +266,10 @@ export class FailurePatternDB {
           this.patterns.set(pattern.id, pattern);
         }
       }
-    } catch {
-      // 로드 실패 시 빈 상태로 시작
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.debug('[FailurePatternDB] load failure:', err instanceof Error ? err.message : String(err));
+      }
     }
   }
 

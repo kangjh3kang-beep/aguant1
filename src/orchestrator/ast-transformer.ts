@@ -1038,8 +1038,10 @@ export class ASTTransformer {
           }
         }
       }
-    } catch {
-      // 디렉토리 접근 불가는 무시
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.debug('[ASTTransformer] scanTSFiles directory access failure:', err instanceof Error ? err.message : String(err));
+      }
     }
 
     return files;

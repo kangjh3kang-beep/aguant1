@@ -233,8 +233,8 @@ export class BrowserAgent extends BaseSubAgent {
         if (Array.isArray(flowConfig.flows)) {
           flows.push(...flowConfig.flows);
         }
-      } catch {
-        // ignore invalid config
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[BrowserAgent] invalid flow config:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -334,8 +334,8 @@ main().catch(err => {
           duration: 0,
         };
       }
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[BrowserAgent] automation sync setup:', err instanceof Error ? err.message : String(err)); }
     }
 
     return null;
@@ -404,8 +404,8 @@ main().catch(err => {
         const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
         return !!(allDeps.puppeteer || allDeps['puppeteer-core']);
       }
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[BrowserAgent] puppeteer package check:', err instanceof Error ? err.message : String(err)); }
     }
     return false;
   }
@@ -644,13 +644,13 @@ main().catch(err => {
                   suggestion: 'WebAIM Contrast Checker로 대비 비율을 확인하세요',
                 }));
               }
-            } catch {
-              // skip
+            } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[BrowserAgent] a11y file read:', err instanceof Error ? err.message : String(err)); }
             }
           }
         }
-      } catch {
-        // skip
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[BrowserAgent] a11y scan dir:', err instanceof Error ? err.message : String(err)); }
       }
     };
 
@@ -671,8 +671,8 @@ main().catch(err => {
   private safeUnlink(filePath: string): void {
     try {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) { console.debug('[BrowserAgent] safe unlink:', err instanceof Error ? err.message : String(err)); }
     }
   }
 }

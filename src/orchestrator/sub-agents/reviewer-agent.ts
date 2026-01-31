@@ -242,10 +242,14 @@ export class ReviewerAgent extends BaseSubAgent {
                   }
                 }
               }
-            } catch { /* non-critical: directory scan or file read failure */ }
+            } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[ReviewerAgent] code smell file read:', err instanceof Error ? err.message : String(err)); }
+            }
           }
         }
-      } catch { /* non-critical: directory scan or file read failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[ReviewerAgent] code smell scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
 
     scanDir(projectPath, 0);
@@ -324,10 +328,14 @@ export class ReviewerAgent extends BaseSubAgent {
               if (lines > 20) { // 20줄 미만은 분석 가치 낮음
                 sourceFiles.push({ relPath: path.relative(projectPath, fullPath), content, lines });
               }
-            } catch { /* non-critical: directory scan or file read failure */ }
+            } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[ReviewerAgent] AI review file read:', err instanceof Error ? err.message : String(err)); }
+            }
           }
         }
-      } catch { /* non-critical: directory scan or file read failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[ReviewerAgent] AI review scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
     collectFiles(projectPath, 0);
 
@@ -447,10 +455,14 @@ export class ReviewerAgent extends BaseSubAgent {
                   }
                 }
               }
-            } catch { /* non-critical: directory scan or file read failure */ }
+            } catch (err: unknown) {
+              if (process.env.AG_DEBUG) { console.debug('[ReviewerAgent] complexity file read:', err instanceof Error ? err.message : String(err)); }
+            }
           }
         }
-      } catch { /* non-critical: directory scan or file read failure */ }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[ReviewerAgent] complexity scan dir:', err instanceof Error ? err.message : String(err)); }
+      }
     };
     scanDir(projectPath, 0);
     return issues;

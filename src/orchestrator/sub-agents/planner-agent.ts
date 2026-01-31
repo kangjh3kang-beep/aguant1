@@ -235,8 +235,8 @@ export class PlannerAgent extends BaseSubAgent {
             autoFixable: false,
           });
         }
-      } catch {
-        // 안전하게 건너뜀
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) { console.debug('[PlannerAgent] antipattern check:', err instanceof Error ? err.message : String(err)); }
       }
     }
     return issues;
@@ -281,7 +281,9 @@ export class PlannerAgent extends BaseSubAgent {
                 if (lineCount > 500) {
                   largeFiles.push({ name: relPath, lines: lineCount });
                 }
-              } catch { /* non-critical: file read failure during scan */ }
+              } catch (err: unknown) {
+                if (process.env.AG_DEBUG) { console.debug('[PlannerAgent] file read during scan:', err instanceof Error ? err.message : String(err)); }
+              }
             }
           }
         }
