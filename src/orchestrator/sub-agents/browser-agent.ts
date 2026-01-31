@@ -1,5 +1,5 @@
 /**
- * Browser Agent — UX/접근성 수석 전문가
+ * Browser Agent — UX/접근성 수석 전문가 (Phase 7 업그레이드)
  *
  * ━━━ 전문 분야 ━━━
  *  · WCAG 2.1 AA 접근성 30종+ 패턴 검증
@@ -9,6 +9,19 @@
  *  · 스크린샷 기반 시각적 회귀 테스트
  *  · 콘솔 에러/경고 탐지, 브라우저 호환성 분석
  *  · Puppeteer/Playwright 자동 UI 테스트 실행
+ *
+ * ━━━ Phase 7: 실제 브라우저 자동화 ━━━
+ *  · DevServerManager: 개발 서버 자동 시작/종료
+ *  · BrowserSession: Puppeteer 기반 헤드리스 Chrome
+ *  · PageInteractor: 클릭, 타이핑, 스크롤, 내비게이션
+ *  · ScreenshotEngine: 캡처 + 비교 (시각적 회귀)
+ *  · ConsoleMonitor: 실시간 콘솔 에러/경고
+ *  · PerformanceAnalyzer: Core Web Vitals 측정
+ *  · A11yAuditor: 렌더된 DOM 접근성 검사
+ *  · FlowRunner: 다단계 사용자 시나리오
+ *
+ * ━━━ Graceful Degradation ━━━
+ *  Puppeteer 미설치 시 → 정적 분석 모드 (HTML/JSX 파일 기반)
  */
 
 import fs from 'fs';
@@ -16,9 +29,16 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { Task, TaskResult, TaskIssue, BrowserConfig, SubAgentConfig, DEFAULT_BROWSER_CONFIG } from '../types';
 import { BaseSubAgent } from './base-agent';
+import {
+  BrowserAutomation,
+  BrowserAutomationConfig,
+  BrowserAutomationResult,
+  UserFlow,
+} from '../browser-automation';
 
 export class BrowserAgent extends BaseSubAgent {
   private browserConfig: BrowserConfig;
+  private automationEngine: BrowserAutomation | null = null;
 
   constructor(config: SubAgentConfig) {
     super(config);
@@ -31,18 +51,26 @@ export class BrowserAgent extends BaseSubAgent {
 
   protected getCapabilities(): string[] {
     return [
+      // 기존 정적 분석 능력
+      'html-semantic-check',
+      'color-contrast-estimation',
+      'focus-management-check',
+      // Phase 7: 실제 브라우저 자동화 능력
+      'real-browser-automation',
+      'dev-server-management',
       'screenshot-capture',
       'visual-regression',
       'console-error-detection',
       'responsive-testing',
       'wcag-2.1-aa-audit',
-      'core-web-vitals-analysis',
+      'core-web-vitals-measurement',
       'seo-validation',
       'performance-metrics',
+      'user-flow-execution',
+      'page-interaction',
+      'auto-link-discovery',
+      'dom-a11y-audit',
       'cloud-browser-integration',
-      'html-semantic-check',
-      'color-contrast-estimation',
-      'focus-management-check',
     ];
   }
 
@@ -74,25 +102,43 @@ export class BrowserAgent extends BaseSubAgent {
     this.ensureDir(screenshotDir);
     outputs.push(`[BROWSER] Screenshots: ${screenshotDir}`);
 
-    // Puppeteer 사용 가능 여부 확인
-    const hasPuppeteer = this.checkPuppeteer(projectPath);
+    // ═══ Phase 7: 실제 브라우저 자동화 시도 ═══
+    const puppeteerAvailable = this.checkPuppeteerRuntime();
 
-    if (hasPuppeteer) {
-      // Puppeteer 기반 테스트
-      const result = this.runPuppeteerTests(projectPath, screenshotDir);
-      outputs.push(...result.logs);
-      issues.push(...result.issues);
-      artifacts.push(...result.artifacts);
-    } else {
-      // Puppeteer 없이 기본 검증
-      outputs.push('[BROWSER] Puppeteer not installed - running basic verification');
-      const result = this.runBasicVerification(projectPath);
-      outputs.push(...result.logs);
-      issues.push(...result.issues);
-
+    if (puppeteerAvailable) {
       outputs.push('');
-      outputs.push('[BROWSER] To enable full browser testing:');
-      outputs.push('  npm install puppeteer --save-dev');
+      outputs.push('[BROWSER] ═══ Phase 7: Real Browser Automation Engine ═══');
+
+      // BrowserAutomation 설정 구성
+      const automationConfig = this.buildAutomationConfig(task, projectPath);
+      this.automationEngine = new BrowserAutomation(projectPath, automationConfig);
+
+      // 비동기 실행을 동기적으로 래핑 (executeTask는 동기 인터페이스)
+      const automationResult = this.runAutomationSync(projectPath, automationConfig);
+
+      if (automationResult) {
+        outputs.push(...automationResult.logs);
+        issues.push(...automationResult.issues);
+
+        // 스크린샷 아티팩트 수집
+        for (const page of automationResult.pages) {
+          if (page.screenshot) artifacts.push(page.screenshot);
+        }
+        for (const flow of automationResult.flows) {
+          artifacts.push(...flow.screenshots);
+        }
+
+        outputs.push('');
+        outputs.push(`[BROWSER] Automation mode: ${automationResult.mode}`);
+        outputs.push(`[BROWSER] Pages tested: ${automationResult.pages.length}`);
+        outputs.push(`[BROWSER] Flows executed: ${automationResult.flows.length}`);
+      } else {
+        outputs.push('[BROWSER] Automation engine returned no result — falling back to static analysis');
+        this.runStaticAnalysis(projectPath, outputs, issues, artifacts, screenshotDir);
+      }
+    } else {
+      // Puppeteer 런타임 미사용 → 정적 분석
+      this.runStaticAnalysis(projectPath, outputs, issues, artifacts, screenshotDir);
     }
 
     // 클라우드 브라우저 연동 확인
@@ -102,21 +148,30 @@ export class BrowserAgent extends BaseSubAgent {
       outputs.push('[BROWSER] Cloud browser integration ready for visual verification');
     }
 
-    // 접근성 기본 검사 (HTML 파일 분석)
-    const a11yResult = this.checkAccessibility(projectPath);
-    outputs.push(...a11yResult.logs);
-    issues.push(...a11yResult.issues);
-
-    // ── SharedKnowledge: 접근성/브라우저 인사이트 저장 ──
-    if (a11yResult.issues.length > 0) {
-      this.addInsight('accessibility', 'medium', `접근성 이슈 ${a11yResult.issues.length}건`,
-        a11yResult.issues.map((i) => i.message).join('\n'),
-        task, a11yResult.issues.map((i) => i.file || '').filter(Boolean));
+    // ── SharedKnowledge: 브라우저 인사이트 저장 ──
+    const a11yIssues = issues.filter((i) => i.message.includes('WCAG') || i.message.includes('A11Y') || i.message.includes('접근성'));
+    if (a11yIssues.length > 0) {
+      this.addInsight('accessibility', 'medium', `접근성 이슈 ${a11yIssues.length}건`,
+        a11yIssues.map((i) => i.message).join('\n'),
+        task, a11yIssues.map((i) => i.file || '').filter(Boolean));
     }
+
+    const perfIssues = issues.filter((i) => i.message.includes('Performance') || i.message.includes('LCP') || i.message.includes('CLS'));
+    if (perfIssues.length > 0) {
+      this.addInsight('recommendation', 'medium', `성능 이슈 ${perfIssues.length}건`,
+        perfIssues.map((i) => i.message).join('\n'), task);
+    }
+
     const browserErrors = issues.filter((i) => i.severity === 'critical' || i.severity === 'error');
     if (browserErrors.length > 0) {
       this.addInsight('accessibility', 'high', `브라우저 에러 ${browserErrors.length}건`,
         browserErrors.map((i) => i.message).join('\n'), task);
+    }
+
+    const consoleIssues = issues.filter((i) => i.message.includes('Console'));
+    if (consoleIssues.length > 0) {
+      this.addInsight('recommendation', 'high', `콘솔 에러 ${consoleIssues.length}건`,
+        consoleIssues.map((i) => i.message).join('\n'), task);
     }
 
     const errorCount = browserErrors.length;
@@ -132,7 +187,216 @@ export class BrowserAgent extends BaseSubAgent {
     };
   }
 
-  private checkPuppeteer(projectPath: string): boolean {
+  // ─── Phase 7: 자동화 설정 구성 ─────────────────────────
+
+  private buildAutomationConfig(task: Task, projectPath: string): Partial<BrowserAutomationConfig> {
+    const config: Partial<BrowserAutomationConfig> = {
+      headless: this.browserConfig.headless,
+      viewport: this.browserConfig.viewport,
+      screenshotDir: this.browserConfig.screenshotDir,
+      baseUrl: this.browserConfig.baseUrl,
+      waitTimeout: this.browserConfig.waitTimeout,
+      cloudBrowser: this.browserConfig.cloudBrowser,
+      performanceEnabled: true,
+      a11yEnabled: true,
+      visualRegressionEnabled: false,
+      maxPages: 5,
+    };
+
+    // 태스크 설명에서 테스트 URL 추출
+    const urlMatch = task.description.match(/https?:\/\/[^\s"']+/);
+    if (urlMatch && !config.baseUrl) {
+      config.baseUrl = urlMatch[0];
+    }
+
+    // 태스크 설명에서 사용자 플로우 힌트 추출
+    const flows = this.extractFlowsFromTask(task, projectPath);
+    if (flows.length > 0) {
+      config.flows = flows;
+    }
+
+    return config;
+  }
+
+  /**
+   * 태스크에서 사용자 플로우를 추출합니다.
+   * 프로젝트에 .ag-review/flows.json이 있으면 그것을 사용합니다.
+   */
+  private extractFlowsFromTask(task: Task, projectPath: string): UserFlow[] {
+    const flows: UserFlow[] = [];
+
+    // 프로젝트 설정에서 플로우 로드
+    const flowConfigPath = path.join(projectPath, '.ag-review', 'flows.json');
+    if (fs.existsSync(flowConfigPath)) {
+      try {
+        const flowConfig = JSON.parse(fs.readFileSync(flowConfigPath, 'utf-8'));
+        if (Array.isArray(flowConfig.flows)) {
+          flows.push(...flowConfig.flows);
+        }
+      } catch {
+        // ignore invalid config
+      }
+    }
+
+    // 기본 탐색 플로우 (항상 포함)
+    if (flows.length === 0) {
+      const baseUrl = this.browserConfig.baseUrl || 'http://localhost:3000';
+      flows.push({
+        name: 'basic-navigation',
+        description: '기본 페이지 내비게이션 및 검증',
+        steps: [
+          { action: 'navigate', value: baseUrl },
+          { action: 'screenshot', screenshotName: 'home-page' },
+          { action: 'scroll', scrollY: 500 },
+          { action: 'screenshot', screenshotName: 'home-scrolled' },
+        ],
+      });
+    }
+
+    return flows;
+  }
+
+  // ─── 자동화 실행 (sync 래퍼) ────────────────────────────
+
+  /**
+   * BrowserAutomation.run()은 async이므로 동기 인터페이스에 맞게 래핑합니다.
+   * Node.js의 execSync + child_process를 통해 async를 sync로 변환합니다.
+   */
+  private runAutomationSync(projectPath: string, config: Partial<BrowserAutomationConfig>): BrowserAutomationResult | null {
+    try {
+      // 임시 스크립트를 생성하여 async 실행
+      const tmpScript = path.join(projectPath, '.ag-review', '_browser-automation-runner.js');
+      const tmpResult = path.join(projectPath, '.ag-review', '_browser-automation-result.json');
+
+      this.ensureDir(path.dirname(tmpScript));
+
+      const scriptContent = `
+const { BrowserAutomation } = require('${path.resolve(__dirname, '..').replace(/\\/g, '/')}/../dist/orchestrator/browser-automation');
+
+async function main() {
+  const config = ${JSON.stringify(config)};
+  const automation = new BrowserAutomation('${projectPath.replace(/\\/g, '/')}', config);
+  const result = await automation.run();
+  require('fs').writeFileSync('${tmpResult.replace(/\\/g, '/')}', JSON.stringify(result, null, 2));
+}
+
+main().catch(err => {
+  require('fs').writeFileSync('${tmpResult.replace(/\\/g, '/')}', JSON.stringify({
+    success: false,
+    mode: 'full-browser',
+    devServer: { started: false },
+    pages: [],
+    flows: [],
+    issues: [{ severity: 'error', message: 'Automation runner error: ' + err.message, autoFixable: false }],
+    logs: ['[BROWSER] Automation runner failed: ' + err.message],
+    duration: 0,
+  }));
+});
+`;
+
+      fs.writeFileSync(tmpScript, scriptContent, 'utf-8');
+
+      try {
+        execSync(`node "${tmpScript}"`, {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          timeout: (this.browserConfig.waitTimeout || 30000) * 5,
+          maxBuffer: 50 * 1024 * 1024,
+          stdio: 'pipe',
+        });
+
+        if (fs.existsSync(tmpResult)) {
+          const result = JSON.parse(fs.readFileSync(tmpResult, 'utf-8'));
+          // 정리
+          this.safeUnlink(tmpScript);
+          this.safeUnlink(tmpResult);
+          return result as BrowserAutomationResult;
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // 스크립트 실행 실패 — Puppeteer 미설치 또는 Chrome 없음일 가능성
+        this.safeUnlink(tmpScript);
+        this.safeUnlink(tmpResult);
+
+        // 빌드 안 된 상태에서는 dist가 없을 수 있으므로 null 반환
+        if (errMsg.includes('Cannot find module') || errMsg.includes('MODULE_NOT_FOUND')) {
+          return null;
+        }
+
+        return {
+          success: false,
+          mode: 'full-browser',
+          devServer: { started: false },
+          pages: [],
+          flows: [],
+          issues: [{ severity: 'warning', message: `Browser automation failed: ${errMsg.slice(0, 200)}`, autoFixable: false }],
+          logs: [`[BROWSER] Automation execution error: ${errMsg.slice(0, 300)}`],
+          duration: 0,
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
+  }
+
+  // ─── 정적 분석 모드 (Puppeteer 없을 때 fallback) ────────
+
+  private runStaticAnalysis(
+    projectPath: string,
+    outputs: string[],
+    issues: TaskIssue[],
+    artifacts: string[],
+    screenshotDir: string,
+  ): void {
+    // Puppeteer package.json 확인 (설치 힌트)
+    const hasPuppeteerInPkg = this.checkPuppeteerPackage(projectPath);
+
+    if (hasPuppeteerInPkg) {
+      // Puppeteer 기반 테스트 스크립트
+      const result = this.runPuppeteerTests(projectPath, screenshotDir);
+      outputs.push(...result.logs);
+      issues.push(...result.issues);
+      artifacts.push(...result.artifacts);
+    } else {
+      // Puppeteer 없이 기본 검증
+      outputs.push('[BROWSER] Puppeteer not installed — running static analysis mode');
+      outputs.push('[BROWSER] To enable real browser testing:');
+      outputs.push('  npm install puppeteer --save-dev');
+      outputs.push('');
+    }
+
+    // 기본 HTML 검증
+    const basicResult = this.runBasicVerification(projectPath);
+    outputs.push(...basicResult.logs);
+    issues.push(...basicResult.issues);
+
+    // 접근성 기본 검사 (JSX/TSX 파일 분석)
+    const a11yResult = this.checkAccessibility(projectPath);
+    outputs.push(...a11yResult.logs);
+    issues.push(...a11yResult.issues);
+  }
+
+  // ─── Puppeteer 런타임 확인 ──────────────────────────────
+
+  /** Puppeteer가 실제로 require 가능한지 확인 */
+  private checkPuppeteerRuntime(): boolean {
+    try {
+      require.resolve('puppeteer');
+      return true;
+    } catch {
+      try {
+        require.resolve('puppeteer-core');
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  /** package.json에 puppeteer가 있는지 확인 (설치 여부와 다름) */
+  private checkPuppeteerPackage(projectPath: string): boolean {
     try {
       const pkgPath = path.join(projectPath, 'package.json');
       if (fs.existsSync(pkgPath)) {
@@ -157,7 +421,7 @@ export class BrowserAgent extends BaseSubAgent {
     const testScript = path.join(projectPath, 'browser-test.js');
     if (fs.existsSync(testScript)) {
       try {
-        const output = execSync(`node ${testScript}`, {
+        const output = execSync(`node "${testScript}"`, {
           cwd: projectPath,
           encoding: 'utf-8',
           timeout: this.browserConfig.waitTimeout * 3,
@@ -170,7 +434,7 @@ export class BrowserAgent extends BaseSubAgent {
         issues.push(this.createIssue('error', `Browser test failed: ${errMsg.slice(0, 200)}`));
       }
     } else {
-      logs.push('[BROWSER] No browser-test.js found - using auto-detection');
+      logs.push('[BROWSER] No browser-test.js found — using auto-detection');
       logs.push('[BROWSER] Create browser-test.js for custom browser tests');
     }
 
@@ -319,7 +583,7 @@ export class BrowserAgent extends BaseSubAgent {
     const logs: string[] = [];
     const issues: TaskIssue[] = [];
 
-    logs.push('[BROWSER] Running basic accessibility checks...');
+    logs.push('[BROWSER] Running basic accessibility checks (static analysis)...');
 
     // JSX/TSX 파일에서 접근성 패턴 확인
     const scanDir = (dir: string, depth: number) => {
@@ -396,9 +660,19 @@ export class BrowserAgent extends BaseSubAgent {
     return { logs, issues };
   }
 
+  // ─── 유틸 ──────────────────────────────────────────────
+
   private ensureDir(dir: string): void {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  private safeUnlink(filePath: string): void {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {
+      // ignore
     }
   }
 }

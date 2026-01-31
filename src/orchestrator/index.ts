@@ -21,6 +21,10 @@
  *
  * ━━━ Phase 5: 직접 패치 기반 자동 수정 ━━━
  *  DirectFeedbackPipeline + PatchGenerator + PatchApplicator + PatchValidator
+ *
+ * ━━━ Phase 7: 실제 브라우저 자동화 ━━━
+ *  BrowserAutomation + DevServerManager + BrowserSession + PageInteractor
+ *  ScreenshotEngine + ConsoleMonitor + PerformanceAnalyzer + A11yAuditor + FlowRunner
  */
 
 export { Orchestrator } from './orchestrator';
@@ -65,6 +69,32 @@ export type { ASTTransformResult, ASTChange, ASTTransformType } from './ast-tran
 // Phase 5: 직접 패치 기반 자동 수정
 export { DirectFeedbackPipeline, PatchGenerator, PatchApplicator, PatchValidator, FeedbackRouter } from './direct-feedback-pipeline';
 export type { Patch, PatchResult, PipelineResult as DirectPatchPipelineResult } from './direct-feedback-pipeline';
+
+// Phase 7: 실제 브라우저 자동화
+export {
+  BrowserAutomation,
+  DevServerManager,
+  BrowserSession,
+  PageInteractor,
+  ScreenshotEngine,
+  ConsoleMonitor,
+  PerformanceAnalyzer,
+  A11yAuditor,
+  FlowRunner,
+  DEFAULT_AUTOMATION_CONFIG,
+} from './browser-automation';
+export type {
+  BrowserAutomationConfig,
+  BrowserAutomationResult,
+  UserFlow,
+  FlowStep,
+  FlowResult,
+  StepResult,
+  PageSnapshot,
+  ConsoleEntry,
+  PerformanceMetrics,
+  A11yViolation,
+} from './browser-automation';
 
 export type {
   ProjectSpec,
