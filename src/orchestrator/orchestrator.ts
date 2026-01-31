@@ -87,6 +87,7 @@ export class Orchestrator {
 
     try {
       const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (!raw || typeof raw !== 'object') return null;
       return {
         project: {
           name: raw.name || path.basename(projectPath),
@@ -104,7 +105,8 @@ export class Orchestrator {
         webhookUrl: raw.webhookUrl,
         slackWebhook: raw.slackWebhook,
       };
-    } catch {
+    } catch (err: unknown) {
+      console.warn('[Orchestrator] 설정 파일 로드 실패:', err instanceof Error ? err.message : String(err));
       return null;
     }
   }
@@ -159,8 +161,8 @@ export class Orchestrator {
       // 최대 50개 유지
       const trimmed = history.slice(-50);
       fs.writeFileSync(historyPath, JSON.stringify(trimmed, null, 2));
-    } catch {
-      // 저장 실패는 무시
+    } catch (err: unknown) {
+      console.warn('[Orchestrator] 파이프라인 상태 저장 실패:', err instanceof Error ? err.message : String(err));
     }
   }
 

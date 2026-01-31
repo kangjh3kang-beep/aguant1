@@ -51,9 +51,9 @@ export function autoFixLint(projectPath: string, command?: string): FixResult {
       }
     }
   } catch {
-    // JSON 파싱 실패시 텍스트 기반 추정
+    // JSON 파싱 실패시: eslint 성공(exitCode=0)이면 수정 완료로 간주
     if (result.exitCode === 0) {
-      fixedCount = -1; // 정확한 수를 알 수 없음
+      fixedCount = 0;
     }
   }
 

@@ -1343,7 +1343,7 @@ generateCode(config, request).then(r => {
   else { process.stdout.write(JSON.stringify({ ok: false, error: r.error })); }
 }).catch(e => { process.stdout.write(JSON.stringify({ ok: false, error: e.message })); });`;
 
-      fs.writeFileSync(scriptPath, script);
+      fs.writeFileSync(scriptPath, script, { mode: 0o600 });
       try {
         const output = execSyncLocal(`node "${scriptPath}"`, {
           encoding: 'utf-8',
@@ -1352,7 +1352,6 @@ generateCode(config, request).then(r => {
         });
         const parsed = JSON.parse(output);
         if (parsed.ok && parsed.text) {
-          // JSON 파싱 시도
           const jsonMatch = parsed.text.match(/\{[\s\S]*?\}/);
           if (jsonMatch) {
             const judgeResult = JSON.parse(jsonMatch[0]);
@@ -1364,9 +1363,15 @@ generateCode(config, request).then(r => {
           }
         }
       } finally {
-        try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+        try { fs.unlinkSync(scriptPath); } catch (cleanupErr: unknown) {
+          if (cleanupErr && typeof cleanupErr === 'object' && (cleanupErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+            this.log(`  [AI-JUDGE] 임시 파일 정리 실패: ${scriptPath}`);
+          }
+        }
       }
-    } catch { /* AI 실패 → 규칙 기반으로 fallback */ }
+    } catch (err: unknown) {
+      this.log(`  [AI-JUDGE] AI 평가 실패 → 규칙 기반 fallback: ${err instanceof Error ? err.message : String(err)}`);
+    }
     return null;
   }
 

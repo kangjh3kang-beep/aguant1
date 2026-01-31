@@ -116,8 +116,11 @@ export function analyzeTest(
   let summary: string;
   try {
     const parsed = JSON.parse(output);
-    if (parsed.numTotalTests != null) {
-      summary = `Tests: ${parsed.numPassedTests} passed, ${parsed.numFailedTests} failed, ${parsed.numTotalTests} total.`;
+    if (
+      parsed !== null && typeof parsed === 'object' &&
+      typeof parsed.numTotalTests === 'number'
+    ) {
+      summary = `Tests: ${parsed.numPassedTests ?? 0} passed, ${parsed.numFailedTests ?? 0} failed, ${parsed.numTotalTests} total.`;
     } else {
       throw new Error('Not Jest JSON output');
     }

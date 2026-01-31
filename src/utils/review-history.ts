@@ -70,7 +70,12 @@ export function loadHistory(projectPath: string): ReviewHistory {
 
   try {
     const raw = fs.readFileSync(historyPath, 'utf-8');
-    return JSON.parse(raw) as ReviewHistory;
+    const parsed = JSON.parse(raw);
+    // 구조 검증: projectPath와 entries 배열이 있어야 유효
+    if (parsed && typeof parsed.projectPath === 'string' && Array.isArray(parsed.entries)) {
+      return parsed as ReviewHistory;
+    }
+    return { projectPath, entries: [], lastUpdated: new Date().toISOString() };
   } catch {
     return { projectPath, entries: [], lastUpdated: new Date().toISOString() };
   }
@@ -401,7 +406,10 @@ function ensureGitignore(projectPath: string): void {
         fs.appendFileSync(gitignorePath, `\n${entry}\n`, 'utf-8');
       }
     }
-  } catch {
-    // gitignore 업데이트 실패는 무시
+  } catch (err: unknown) {
+    // gitignore 업데이트 실패는 운영에 영향 없으나 디버깅을 위해 기록
+    if (process.env.AG_DEBUG) {
+      console.warn('[ag-review] .gitignore 업데이트 실패:', err instanceof Error ? err.message : String(err));
+    }
   }
 }

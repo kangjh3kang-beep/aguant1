@@ -142,7 +142,9 @@ export class LearningMemory {
   save(): void {
     try {
       fs.writeFileSync(this.storagePath, JSON.stringify(this.data, null, 2), 'utf-8');
-    } catch { /* write failure → silent */ }
+    } catch (err: unknown) {
+      console.warn('[LearningMemory] 저장 실패:', err instanceof Error ? err.message : String(err));
+    }
   }
 
   // ─── 이슈 패턴 학습 ───

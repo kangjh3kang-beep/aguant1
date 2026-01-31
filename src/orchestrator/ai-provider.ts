@@ -68,8 +68,14 @@ export function autoDetectProvider(): AIProviderConfig | null {
 /**
  * AI 프로바이더를 통해 코드를 생성합니다.
  */
+function getEnvKeyName(provider: string): 'anthropic' | 'openai' | 'google' {
+  if (provider === 'claude') return 'anthropic';
+  if (provider === 'openai') return 'openai';
+  return 'google';
+}
+
 export async function generateCode(config: AIProviderConfig, request: AICodeRequest): Promise<AICodeResponse> {
-  const apiKey = config.apiKey || loadAPIKeysFromEnv()[config.provider === 'claude' ? 'anthropic' : config.provider === 'openai' ? 'openai' : 'google'];
+  const apiKey = config.apiKey || loadAPIKeysFromEnv()[getEnvKeyName(config.provider)];
 
   if (!apiKey) {
     return {
@@ -214,7 +220,7 @@ async function callOpenAIAPI(apiKey: string, config: AIProviderConfig, request: 
 
 async function callGoogleAPI(apiKey: string, config: AIProviderConfig, request: AICodeRequest): Promise<AICodeResponse> {
   const model = config.model || 'gemini-2.0-flash';
-  const endpoint = `/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const endpoint = `/v1beta/models/${model}:generateContent`;
 
   const body = JSON.stringify({
     contents: [
@@ -231,6 +237,7 @@ async function callGoogleAPI(apiKey: string, config: AIProviderConfig, request: 
 
   const result = await httpPost('generativelanguage.googleapis.com', endpoint, body, {
     'Content-Type': 'application/json',
+    'x-goog-api-key': apiKey,
   });
 
   try {
