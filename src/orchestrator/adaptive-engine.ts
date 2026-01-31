@@ -20,6 +20,7 @@
 import fs from 'fs';
 import path from 'path';
 import { TaskPhase } from './types';
+import { CodeTransformer, TransformType } from './code-transformer';
 
 // ─── 실패 패턴 타입 ─────────────────────────────────────
 
@@ -818,9 +819,11 @@ export class AdaptiveEngine {
  */
 class StrategyExecutor {
   private projectPath: string;
+  private codeTransformer: CodeTransformer;
 
   constructor(projectPath: string) {
     this.projectPath = projectPath;
+    this.codeTransformer = new CodeTransformer(projectPath);
   }
 
   execute(
@@ -876,7 +879,20 @@ class StrategyExecutor {
           outputs.push(`[STRATEGY] 수동 확인 필요: ${strategy.steps.join(' → ')}`);
           return { success: false, commands, outputs };
         }
+        case 'architecture-violation': {
+          const result = this.handleArchitectureViolation(strategy, pattern);
+          commands.push(...result.commands);
+          outputs.push(...result.outputs);
+          return { success: result.success, commands, outputs };
+        }
         default: {
+          // 기본: CodeTransformer로 파일 기반 수정 시도
+          const result = this.handleWithCodeTransformer(strategy, pattern);
+          if (result.success) {
+            commands.push(...result.commands);
+            outputs.push(...result.outputs);
+            return { success: true, commands, outputs };
+          }
           outputs.push(`[STRATEGY] ${strategy.name}: 범용 전략 — steps 기반 가이드 제공`);
           outputs.push(`[STRATEGY] 실행 단계: ${strategy.steps.join(' → ')}`);
           return { success: false, commands, outputs };
@@ -937,16 +953,34 @@ class StrategyExecutor {
     const outputs: string[] = [];
 
     if (strategy.id === 'lint-autofix') {
+      // 1. eslint --fix 실행
       const cmd = 'npx eslint --fix . 2>&1 || true';
       commands.push(cmd);
       try {
         const { execSync: exec } = require('child_process');
         exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
         outputs.push('[STRATEGY] eslint --fix 실행 완료');
-        return { success: true, commands, outputs };
       } catch {
         outputs.push('[STRATEGY] eslint --fix 실행 실패');
       }
+
+      // 2. CodeTransformer로 추가 수정 (eslint가 못 고치는 것)
+      const transforms: TransformType[] = ['remove-unused-import', 'remove-console', 'fix-empty-catch', 'replace-any-type'];
+      const transformResult = this.codeTransformer.transformProject(transforms);
+      if (transformResult.changed > 0) {
+        outputs.push(`[STRATEGY] CodeTransformer 추가 수정: ${transformResult.changed}개 파일`);
+        commands.push(`[code-transform] ${transformResult.changed} files`);
+      }
+
+      return { success: true, commands, outputs };
+    }
+
+    // lint-rule-config: CodeTransformer로 코드 수정 시도
+    const transforms: TransformType[] = ['remove-unused-import', 'fix-empty-catch', 'replace-any-type'];
+    const transformResult = this.codeTransformer.transformProject(transforms);
+    if (transformResult.changed > 0) {
+      outputs.push(`[STRATEGY] CodeTransformer 린트 수정: ${transformResult.changed}개 파일`);
+      return { success: true, commands, outputs };
     }
 
     return { success: false, commands, outputs };
@@ -1030,6 +1064,17 @@ class StrategyExecutor {
       }
     }
 
+    // 코드 수준 보안 수정 (하드코딩 시크릿, input validation 등)
+    if (strategy.id === 'security-secret-migrate') {
+      const transforms: TransformType[] = ['extract-hardcoded-secret'];
+      const transformResult = this.codeTransformer.transformProject(transforms);
+      if (transformResult.changed > 0) {
+        outputs.push(`[STRATEGY] CodeTransformer 시크릿 마이그레이션: ${transformResult.changed}개 파일`);
+        commands.push(`[code-transform] extract-hardcoded-secret: ${transformResult.changed} files`);
+        return { success: true, commands, outputs };
+      }
+    }
+
     outputs.push(`[STRATEGY] ${strategy.name}: 수동 코드 수정 필요`);
     outputs.push(`[STRATEGY] 실행 단계: ${strategy.steps.join(' → ')}`);
     return { success: false, commands, outputs };
@@ -1039,7 +1084,15 @@ class StrategyExecutor {
     const commands: string[] = [];
     const outputs: string[] = [];
 
-    // 타입 체크 재실행
+    // 1. CodeTransformer로 any → unknown, non-null assertion 제거
+    const transforms: TransformType[] = ['replace-any-type', 'remove-non-null-assertion'];
+    const transformResult = this.codeTransformer.transformProject(transforms);
+    if (transformResult.changed > 0) {
+      outputs.push(`[STRATEGY] CodeTransformer 타입 수정: ${transformResult.changed}개 파일`);
+      commands.push(`[code-transform] type-fix: ${transformResult.changed} files`);
+    }
+
+    // 2. 타입 체크 재실행
     const cmd = 'npx tsc --noEmit 2>&1 || true';
     commands.push(cmd);
     try {
@@ -1047,9 +1100,62 @@ class StrategyExecutor {
       const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
       const hasError = /error TS\d+/i.test(output);
       outputs.push(`[STRATEGY] 타입 체크 ${hasError ? '에러 지속' : '통과'}`);
-      return { success: !hasError, commands, outputs };
+      return { success: !hasError || transformResult.changed > 0, commands, outputs };
     } catch {
       outputs.push('[STRATEGY] 타입 체크 실행 실패');
+    }
+
+    return { success: transformResult.changed > 0, commands, outputs };
+  }
+
+  private handleArchitectureViolation(strategy: FixStrategy, pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    // CodeTransformer로 기본적인 코드 정리 (미사용 import, console.log 등)
+    const transforms: TransformType[] = ['remove-unused-import', 'remove-console', 'fix-empty-catch'];
+    const transformResult = this.codeTransformer.transformProject(transforms);
+
+    if (transformResult.changed > 0) {
+      outputs.push(`[STRATEGY] CodeTransformer 아키텍처 정리: ${transformResult.changed}개 파일`);
+      commands.push(`[code-transform] arch-cleanup: ${transformResult.changed} files`);
+      return { success: true, commands, outputs };
+    }
+
+    outputs.push(`[STRATEGY] ${strategy.name}: 구조적 리팩토링 필요 — 자동 수정 범위 초과`);
+    outputs.push(`[STRATEGY] 수동 수정 가이드: ${strategy.steps.join(' → ')}`);
+    return { success: false, commands, outputs };
+  }
+
+  private handleWithCodeTransformer(strategy: FixStrategy, pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    // 에러 메시지에서 파일 경로 추출
+    const fileMatch = pattern.originalMessage.match(/(?:in|at|file)\s+['"]?([^\s'"]+\.[tj]sx?)/i) ||
+                      pattern.originalMessage.match(/([^\s:]+\.[tj]sx?):\d+/);
+
+    if (fileMatch) {
+      const file = fileMatch[1];
+      // 모든 변환을 시도
+      const result = this.codeTransformer.transformFile(file);
+      if (result.success && result.appliedCount > 0) {
+        outputs.push(`[STRATEGY] CodeTransformer 수정: ${file} (${result.appliedCount}건)`);
+        for (const change of result.changes.slice(0, 3)) {
+          outputs.push(`  - ${change.description}`);
+        }
+        commands.push(`[code-transform] ${file}: ${result.appliedCount} changes`);
+        return { success: true, commands, outputs };
+      }
+    }
+
+    // 프로젝트 전체 기본 정리 시도
+    const transforms: TransformType[] = ['remove-unused-import', 'fix-empty-catch'];
+    const projectResult = this.codeTransformer.transformProject(transforms);
+    if (projectResult.changed > 0) {
+      outputs.push(`[STRATEGY] CodeTransformer 프로젝트 정리: ${projectResult.changed}개 파일`);
+      commands.push(`[code-transform] project-cleanup: ${projectResult.changed} files`);
+      return { success: true, commands, outputs };
     }
 
     return { success: false, commands, outputs };

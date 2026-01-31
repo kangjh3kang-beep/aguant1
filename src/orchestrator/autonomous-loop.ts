@@ -36,6 +36,8 @@ import { TaskResult, TaskIssue, TaskPhase, PipelineState, PipelineConfig, Projec
 import { PipelineEngine } from './pipeline';
 import { PromptEnhancer } from './prompt-enhancer';
 import { AdaptiveEngine, FixStrategy, FailurePattern } from './adaptive-engine';
+import { DirectFeedbackPipeline, PipelineResult as DirectPatchResult } from './direct-feedback-pipeline';
+import { CodeTransformer } from './code-transformer';
 
 // ─── 시스템 분석 결과 (전체 시스템 인지) ───
 
@@ -169,6 +171,8 @@ export class AutonomousLoop {
   private state: LoopState;
   private promptEnhancer: PromptEnhancer;
   private adaptiveEngine: AdaptiveEngine;
+  private directFeedback: DirectFeedbackPipeline;
+  private codeTransformer: CodeTransformer;
 
   constructor(
     project: ProjectSpec,
@@ -183,6 +187,10 @@ export class AutonomousLoop {
     // AdaptiveEngine: 학습 데이터 저장 경로
     const storagePath = require('path').join(project.rootPath, '.ag-review');
     this.adaptiveEngine = new AdaptiveEngine(storagePath);
+
+    // Phase 4-5: 직접 코드 수정 엔진
+    this.directFeedback = new DirectFeedbackPipeline(project.rootPath);
+    this.codeTransformer = new CodeTransformer(project.rootPath);
 
     this.state = {
       cycle: 0,
@@ -224,6 +232,8 @@ export class AutonomousLoop {
     this.log(`  회귀 방지:        ${this.config.regressionGuard ? 'ON' : 'OFF'}`);
     this.log(`  피드백 활성:      ${this.config.feedbackEnabled}`);
     this.log(`  적응형 학습:      ON (FailurePatternDB + StrategySelector)`);
+    this.log(`  코드 변환:        ON (CodeTransformer + DirectFeedbackPipeline)`);
+    this.log(`  직접 패치:        ON (이슈 → 패치 → 적용 → 검증)`);
     this.log(`  학습 패턴:        ${this.adaptiveEngine.getPatternDB().size()}개 축적`);
     this.log('');
 
@@ -330,24 +340,44 @@ export class AutonomousLoop {
         }
       }
 
-      // 7. 시스템 인지 기반 자동 수정 (단순 lint fix가 아닌 맥락 기반 수정)
+      // 7. DirectFeedbackPipeline: 직접 코드 수정 (이슈 → 패치 → 적용 → 검증)
       if (analysis.autoFixable.length > 0 && this.config.feedbackEnabled) {
-        const feedbacks = this.buildSystemAwareFeedbacks(analysis.autoFixable, pipelineResult);
+        this.log('\n  ── Phase 4-5: DirectFeedbackPipeline (직접 패치 적용) ──');
+
+        // ① DirectFeedbackPipeline으로 직접 코드 수정
+        const directResult = this.directFeedback.execute(pipelineResult);
+        this.log(`  [DIRECT-PATCH] 총 이슈: ${directResult.totalIssues}, 자동수정 가능: ${directResult.autoFixableCount}`);
+        this.log(`  [DIRECT-PATCH] 패치 생성: ${directResult.patchesGenerated}, 적용: ${directResult.patchesApplied}, 검증: ${directResult.patchesValidated}`);
+        if (directResult.patchesRolledBack > 0) {
+          this.log(`  [DIRECT-PATCH] 롤백: ${directResult.patchesRolledBack}건`);
+        }
+
+        // ② 남은 이슈에 대해 시스템 인지 기반 피드백 생성 (다음 사이클용)
+        const remainingIssues = directResult.manualFixNeeded;
+        const feedbacks = this.buildSystemAwareFeedbacks(
+          remainingIssues.length > 0 ? remainingIssues : analysis.autoFixable,
+          pipelineResult,
+        );
         this.state.feedbacks.push(...feedbacks);
 
         const fixAttempt: FixAttempt = {
           cycle: this.state.cycle,
           phase: analysis.failedPhase || 'review',
           issueCount: analysis.totalIssues,
-          fixedCount: 0,
-          remainingCount: analysis.totalIssues,
-          description: `${analysis.autoFixable.length}건 시스템 인지 기반 수정 시도`,
+          fixedCount: directResult.patchesApplied,
+          remainingCount: analysis.totalIssues - directResult.patchesApplied,
+          description: `직접 패치 ${directResult.patchesApplied}건 적용, 나머지 ${remainingIssues.length}건 피드백 주입`,
         };
         this.state.fixHistory.push(fixAttempt);
 
-        this.log(`\n  🔄 시스템 인지 기반 수정 ${analysis.autoFixable.length}건 → 다음 사이클에서 재검증`);
+        if (directResult.patchesApplied > 0) {
+          this.log(`  ✅ 직접 수정 ${directResult.patchesApplied}건 완료 → 다음 사이클에서 재검증`);
+        }
+        if (remainingIssues.length > 0) {
+          this.log(`  🔄 수동 수정 필요 ${remainingIssues.length}건 → 피드백으로 다음 사이클에 전달`);
+        }
 
-        // AdaptiveEngine: 이전 사이클 전략 결과 기록 (2사이클 이상)
+        // ③ AdaptiveEngine: 이전 사이클 전략 결과 기록 (2사이클 이상)
         if (this.state.cycle > 1) {
           const prevResult = this.state.pipelineResults[this.state.pipelineResults.length - 2];
           if (prevResult) {
@@ -361,10 +391,28 @@ export class AutonomousLoop {
 
         this.injectFeedbackIntoConfig(feedbacks);
       } else if (analysis.totalIssues > 0) {
-        this.log(`\n  ❌ 자동 수정 불가한 이슈 ${analysis.totalIssues}건`);
-        this.state.status = 'human-needed';
-        this.state.humanNeededReasons.push(`자동 수정 불가 이슈 ${analysis.totalIssues}건`);
-        break;
+        // 자동 수정 불가능해도 CodeTransformer로 기본 정리 시도
+        this.log('\n  ── CodeTransformer 기본 정리 시도 ──');
+        const cleanupResult = this.codeTransformer.transformProject(
+          ['remove-unused-import', 'fix-empty-catch', 'remove-console'],
+        );
+        if (cleanupResult.changed > 0) {
+          this.log(`  [CLEANUP] ${cleanupResult.changed}개 파일 정리 완료 → 다음 사이클에서 재검증`);
+          const fixAttempt: FixAttempt = {
+            cycle: this.state.cycle,
+            phase: analysis.failedPhase || 'review',
+            issueCount: analysis.totalIssues,
+            fixedCount: cleanupResult.changed,
+            remainingCount: Math.max(0, analysis.totalIssues - cleanupResult.changed),
+            description: `CodeTransformer 기본 정리 ${cleanupResult.changed}개 파일`,
+          };
+          this.state.fixHistory.push(fixAttempt);
+        } else {
+          this.log(`\n  ❌ 자동 수정 불가한 이슈 ${analysis.totalIssues}건`);
+          this.state.status = 'human-needed';
+          this.state.humanNeededReasons.push(`자동 수정 불가 이슈 ${analysis.totalIssues}건`);
+          break;
+        }
       }
     }
 
@@ -433,8 +481,8 @@ export class AutonomousLoop {
     for (const issue of allIssues) {
       // critical 보안 이슈 → 인간 필요
       if (this.config.humanRequiredSeverity.includes(issue.severity as 'critical')) {
-        // 단, 자동 수정 가능한 것은 제외
-        if (!issue.autoFixable) {
+        // 단, 자동 수정 가능한 것은 제외 (확장 분류 적용)
+        if (!this.isExtendedAutoFixable(issue)) {
           humanNeeded.push(`${issue.severity}: ${issue.message}`);
           continue;
         }
@@ -626,6 +674,16 @@ export class AutonomousLoop {
       this.log('\n  [수정 이력]');
       for (const fix of this.state.fixHistory) {
         this.log(`    Cycle ${fix.cycle}: ${fix.description} (${fix.phase})`);
+      }
+    }
+
+    // 직접 패치 이력
+    const totalDirectFixes = this.state.fixHistory.reduce((sum, fix) => sum + fix.fixedCount, 0);
+    if (totalDirectFixes > 0) {
+      this.log('\n  [직접 코드 수정 이력]');
+      this.log(`    총 직접 수정:   ${totalDirectFixes}건`);
+      for (const fix of this.state.fixHistory.filter((f) => f.fixedCount > 0)) {
+        this.log(`    Cycle ${fix.cycle}: ${fix.description}`);
       }
     }
 
@@ -945,6 +1003,29 @@ export class AutonomousLoop {
     }
 
     return feedbacks;
+  }
+
+  /**
+   * 확장된 자동 수정 가능 여부 판단
+   * 기존 autoFixable 필드 + CodeTransformer/DirectFeedbackPipeline이 처리할 수 있는 패턴
+   */
+  private isExtendedAutoFixable(issue: TaskIssue): boolean {
+    if (issue.autoFixable) return true;
+
+    const msg = issue.message.toLowerCase();
+
+    // CodeTransformer가 처리 가능한 패턴들
+    if (/unused.*import|declared but.*never (read|used)/.test(msg)) return true;
+    if (/console\.(log|debug|info)/.test(msg) && issue.file) return true;
+    if (/no-explicit-any|unexpected any/.test(msg) && issue.file) return true;
+    if (/empty.*catch|no-empty/.test(msg) && issue.file) return true;
+    if (/hardcoded.*secret|hardcoded.*password/.test(msg) && issue.file) return true;
+    if (/no-non-null-assertion/.test(msg) && issue.file) return true;
+
+    // suggestion + line이 있으면 DirectFeedbackPipeline이 처리 가능
+    if (issue.line && issue.suggestion && issue.file) return true;
+
+    return false;
   }
 
   private log(message: string): void {

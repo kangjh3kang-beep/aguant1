@@ -12,6 +12,15 @@
  *
  * ━━━ Phase 3: 코드 생성 자동 검증 ━━━
  *  CodeGenV2 + CodeValidator + FallbackChain + TestFirstPipeline
+ *
+ * ━━━ Phase 4: 프로그래매틱 코드 변환 ━━━
+ *  CodeTransformer (패턴 기반 소스 코드 직접 수정)
+ *
+ * ━━━ Phase 4.5: AST 기반 코드 변환 ━━━
+ *  ASTTransformer (TypeScript Compiler API 기반 정밀 변환)
+ *
+ * ━━━ Phase 5: 직접 패치 기반 자동 수정 ━━━
+ *  DirectFeedbackPipeline + PatchGenerator + PatchApplicator + PatchValidator
  */
 
 export { Orchestrator } from './orchestrator';
@@ -44,6 +53,18 @@ export type { FailurePattern, FailureCategory, FixStrategy, StrategyAttempt, Lea
 // Phase 3: 코드 생성 자동 검증
 export { CodeGenV2, CodeValidator, FallbackChain, TestFirstPipeline, CodeQualityGate, DEFAULT_CODEGEN_V2_CONFIG } from './code-gen-v2';
 export type { ValidationResult, QualityMetrics, GenerationAttempt, CodeGenV2Result, CodeGenV2Config } from './code-gen-v2';
+
+// Phase 4: 프로그래매틱 코드 변환
+export { CodeTransformer } from './code-transformer';
+export type { TransformResult, TransformChange, TransformType, LinePatch } from './code-transformer';
+
+// Phase 4.5: AST 기반 코드 변환 (TypeScript Compiler API)
+export { ASTTransformer } from './ast-transformer';
+export type { ASTTransformResult, ASTChange, ASTTransformType } from './ast-transformer';
+
+// Phase 5: 직접 패치 기반 자동 수정
+export { DirectFeedbackPipeline, PatchGenerator, PatchApplicator, PatchValidator, FeedbackRouter } from './direct-feedback-pipeline';
+export type { Patch, PatchResult, PipelineResult as DirectPatchPipelineResult } from './direct-feedback-pipeline';
 
 export type {
   ProjectSpec,
