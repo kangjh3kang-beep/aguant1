@@ -11,14 +11,25 @@ export interface ProcessResult {
 }
 
 const BLOCKED_PATTERNS = [
-  /;\s*rm\s+-rf\s/i,
-  /;\s*del\s+\/s/i,
-  /&&\s*rm\s+-rf\s/i,
-  /\|\s*sh\s*$/i,
-  /\|\s*bash\s*$/i,
-  /`[^`]*`/,
-  /\$\([^)]*\)/,
-  />\s*\/etc\//i,
+  /;\s*rm\s+-rf\s/i,        // rm -rf after semicolon
+  /;\s*del\s+\/s/i,          // Windows del after semicolon
+  /&&\s*rm\s+-rf\s/i,        // rm -rf after &&
+  /\|\s*sh\s*$/i,            // pipe to sh
+  /\|\s*bash\s*$/i,          // pipe to bash
+  /`[^`]*`/,                 // backtick command substitution
+  /\$\([^)]*\)/,             // $() command substitution
+  />\s*\/etc\//i,            // redirect to /etc/
+  /;\s*curl\s/i,             // curl after semicolon
+  /;\s*wget\s/i,             // wget after semicolon
+  /&&\s*curl\s/i,            // curl after &&
+  /&&\s*wget\s/i,            // wget after &&
+  /\|\s*tee\s/i,             // pipe to tee
+  /;\s*chmod\s/i,            // chmod after semicolon
+  /;\s*chown\s/i,            // chown after semicolon
+  /;\s*mkfs/i,               // mkfs after semicolon
+  /;\s*dd\s/i,               // dd after semicolon
+  /\|\s*nc\s/i,              // pipe to netcat
+  /\beval\s/i,               // eval command
 ];
 
 /**

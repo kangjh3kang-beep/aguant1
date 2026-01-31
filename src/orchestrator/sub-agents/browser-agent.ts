@@ -270,18 +270,22 @@ export class BrowserAgent extends BaseSubAgent {
 
       this.ensureDir(path.dirname(tmpScript));
 
+      // 보안: 경로를 JSON.stringify로 이스케이프하여 인젝션 방지
+      const safeProjectPath = JSON.stringify(projectPath.replace(/\\/g, '/'));
+      const safeTmpResult = JSON.stringify(tmpResult.replace(/\\/g, '/'));
+
       const scriptContent = `
 const { BrowserAutomation } = require('${path.resolve(__dirname, '..').replace(/\\/g, '/')}/../dist/orchestrator/browser-automation');
 
 async function main() {
   const config = ${JSON.stringify(config)};
-  const automation = new BrowserAutomation('${projectPath.replace(/\\/g, '/')}', config);
+  const automation = new BrowserAutomation(${safeProjectPath}, config);
   const result = await automation.run();
-  require('fs').writeFileSync('${tmpResult.replace(/\\/g, '/')}', JSON.stringify(result, null, 2));
+  require('fs').writeFileSync(${safeTmpResult}, JSON.stringify(result, null, 2));
 }
 
 main().catch(err => {
-  require('fs').writeFileSync('${tmpResult.replace(/\\/g, '/')}', JSON.stringify({
+  require('fs').writeFileSync(${safeTmpResult}, JSON.stringify({
     success: false,
     mode: 'full-browser',
     devServer: { started: false },
