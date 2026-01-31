@@ -409,7 +409,7 @@ generateCode(config, request).then(r => {
             files.push(fullPath);
           }
         }
-      } catch { /* ignore */ }
+      } catch { /* non-critical: directory scan failure */ }
     };
     scanDir(projectPath, 0);
     // index/types/main 파일 우선

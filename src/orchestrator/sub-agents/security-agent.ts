@@ -395,11 +395,11 @@ export class SecurityAgent extends BaseSubAgent {
                     content: content.length > 3000 ? content.slice(0, 3000) + '\n// ... (truncated)' : content,
                   });
                 }
-              } catch { /* skip */ }
+              } catch { /* non-critical: scan or file operation failure */ }
             }
           }
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: scan or file operation failure */ }
     };
     collectFiles(projectPath, 0);
 
@@ -516,7 +516,7 @@ export class SecurityAgent extends BaseSubAgent {
             suggestion: 'argon2 또는 bcrypt로 비밀번호를 해싱하세요',
           }));
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: scan or file operation failure */ }
     }
 
     // .gitignore 필수 항목 검증

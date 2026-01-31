@@ -377,10 +377,10 @@ export class DeployerAgent extends BaseSubAgent {
           const full = path.join(dir, entry.name);
           if (entry.isDirectory()) { scanDir(full, depth + 1); }
           else if (/\.(ts|js)$/.test(entry.name) && parts.join('').length < 50000) {
-            try { parts.push(fs.readFileSync(full, 'utf-8')); } catch { /* skip */ }
+            try { parts.push(fs.readFileSync(full, 'utf-8')); } catch { /* non-critical: scan or file operation failure */ }
           }
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: scan or file operation failure */ }
     };
     scanDir(projectPath, 0);
     return parts.join('\n');
@@ -396,10 +396,10 @@ export class DeployerAgent extends BaseSubAgent {
         if (entry.isDirectory()) {
           total += this.getDirSize(full);
         } else {
-          try { total += fs.statSync(full).size; } catch { /* skip */ }
+          try { total += fs.statSync(full).size; } catch { /* non-critical: scan or file operation failure */ }
         }
       }
-    } catch { /* skip */ }
+    } catch { /* non-critical: scan or file operation failure */ }
     return total;
   }
 

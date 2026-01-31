@@ -332,7 +332,13 @@ export class CodeTransformer {
             fs.writeFileSync(fullPath, newCode, 'utf-8');
           } catch (writeErr: unknown) {
             // 쓰기 실패 시 원본 보존 시도
-            try { fs.writeFileSync(fullPath, originalCode, 'utf-8'); } catch { /* 원본 복원도 실패 */ }
+            try {
+              fs.writeFileSync(fullPath, originalCode, 'utf-8');
+            } catch (restoreErr: unknown) {
+              if (process.env.AG_DEBUG) {
+                console.warn('[CodeTransformer] 원본 복원 실패:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
+              }
+            }
             for (const r of results) {
               if (r.patch.file === file && r.success) { r.success = false; r.error = `쓰기 실패: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`; applied--; failed++; }
             }

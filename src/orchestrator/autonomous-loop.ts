@@ -872,7 +872,7 @@ export class AutonomousLoop {
               }
             }
           }
-        } catch { /* skip */ }
+        } catch { /* non-critical: scan or file operation failure */ }
       };
       scanDir(projectPath, 0);
 
@@ -882,16 +882,16 @@ export class AutonomousLoop {
         try {
           const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
           depCount = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) }).length;
-        } catch { /* skip */ }
+        } catch { /* non-critical: scan or file operation failure */ }
       }
 
       const reqPath = path.join(projectPath, 'requirements.txt');
       if (fs.existsSync(reqPath)) {
         try {
           depCount = fs.readFileSync(reqPath, 'utf-8').split('\n').filter((l: string) => l.trim() && !l.startsWith('#')).length;
-        } catch { /* skip */ }
+        } catch { /* non-critical: scan or file operation failure */ }
       }
-    } catch { /* skip */ }
+    } catch { /* non-critical: scan or file operation failure */ }
 
     // 프로젝트 유형 추론
     const projectType = this.inferProjectType(components, techStack);

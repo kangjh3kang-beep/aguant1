@@ -131,7 +131,11 @@ export class LearningMemory {
           projectProfile: parsed.projectProfile || null,
         };
       }
-    } catch { /* corrupt file → reset */ }
+    } catch (err: unknown) {
+      if (process.env.AG_DEBUG) {
+        console.warn('[LearningMemory] 데이터 로드 실패 (초기화):', err instanceof Error ? err.message : String(err));
+      }
+    }
     return this.createEmptyData();
   }
 

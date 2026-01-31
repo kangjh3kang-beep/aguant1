@@ -1605,7 +1605,7 @@ export class BrowserAutomation {
       await page.close();
       return links.slice(0, 20);
     } catch {
-      try { await page.close(); } catch { /* ignore */ }
+      try { await page.close(); } catch { /* non-critical: page close cleanup */ }
       return [];
     }
   }

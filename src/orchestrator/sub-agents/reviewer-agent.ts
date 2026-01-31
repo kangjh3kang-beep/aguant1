@@ -242,10 +242,10 @@ export class ReviewerAgent extends BaseSubAgent {
                   }
                 }
               }
-            } catch { /* skip */ }
+            } catch { /* non-critical: directory scan or file read failure */ }
           }
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: directory scan or file read failure */ }
     };
 
     scanDir(projectPath, 0);
@@ -324,10 +324,10 @@ export class ReviewerAgent extends BaseSubAgent {
               if (lines > 20) { // 20줄 미만은 분석 가치 낮음
                 sourceFiles.push({ relPath: path.relative(projectPath, fullPath), content, lines });
               }
-            } catch { /* skip */ }
+            } catch { /* non-critical: directory scan or file read failure */ }
           }
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: directory scan or file read failure */ }
     };
     collectFiles(projectPath, 0);
 
@@ -447,10 +447,10 @@ export class ReviewerAgent extends BaseSubAgent {
                   }
                 }
               }
-            } catch { /* skip */ }
+            } catch { /* non-critical: directory scan or file read failure */ }
           }
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: directory scan or file read failure */ }
     };
     scanDir(projectPath, 0);
     return issues;

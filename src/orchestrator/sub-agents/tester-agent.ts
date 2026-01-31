@@ -111,7 +111,7 @@ const TEST_ERROR_PATTERNS: ErrorPattern[] = [
           fs.writeFileSync(fullPath, content, 'utf-8');
           return true;
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: scan or file operation failure */ }
       return false;
     },
   },
@@ -399,10 +399,10 @@ export class TesterAgent extends BaseSubAgent {
               if (fileModified) {
                 fs.writeFileSync(fullPath, content, 'utf-8');
               }
-            } catch { /* skip */ }
+            } catch { /* non-critical: scan or file operation failure */ }
           }
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: scan or file operation failure */ }
     };
 
     scanDir(projectPath, 0);
@@ -446,7 +446,7 @@ export class TesterAgent extends BaseSubAgent {
             }
           }
         }
-      } catch { /* skip */ }
+      } catch { /* non-critical: scan or file operation failure */ }
     };
 
     scanDir(projectPath, 0);
@@ -750,7 +750,7 @@ export class TesterAgent extends BaseSubAgent {
         logs.push(`[TESTER] ── 소스 코드 선행 수정 ──`);
         logs.push(`[TESTER] ✓ CodeTransformer로 ${cleanupResult.changed}개 파일 정리 (미사용 import, 빈 catch)`);
       }
-    } catch { /* skip — CodeTransformer 실패는 치명적이지 않음 */ }
+    } catch { /* non-critical: CodeTransformer 실패는 테스트 실행에 영향 없음 */ }
 
     return { logs, fixedCount };
   }

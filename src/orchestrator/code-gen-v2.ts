@@ -195,7 +195,7 @@ export class CodeValidator {
       }
 
       // 임시 파일 정리
-      try { fs.unlinkSync(tempFile); } catch { /* ignore */ }
+      try { fs.unlinkSync(tempFile); } catch { /* non-critical: temp file cleanup */ }
     } catch {
       warnings.push('TypeScript 검증 환경 설정 실패');
     }

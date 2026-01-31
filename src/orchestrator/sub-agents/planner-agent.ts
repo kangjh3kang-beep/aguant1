@@ -281,7 +281,7 @@ export class PlannerAgent extends BaseSubAgent {
                 if (lineCount > 500) {
                   largeFiles.push({ name: relPath, lines: lineCount });
                 }
-              } catch { /* skip */ }
+              } catch { /* non-critical: file read failure during scan */ }
             }
           }
         }

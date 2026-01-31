@@ -3,6 +3,7 @@
  */
 
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { CodeReviewAgent } from '../agent';
 import { formatReportAsText } from '../report-generator';
@@ -48,10 +49,9 @@ export function createServer(defaultProjectPath?: string): express.Express {
 
   // ─── 프로젝트 정보 ───
   app.get('/api/project', (req, res) => {
-    const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
     try {
+      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
       const { config } = loadConfig(projectPath);
-      const fs = require('fs');
       const pkgPath = path.join(projectPath, 'package.json');
       let pkg: Record<string, unknown> = {};
       if (fs.existsSync(pkgPath)) {
@@ -70,11 +70,10 @@ export function createServer(defaultProjectPath?: string): express.Express {
 
   // ─── 코드리뷰 실행 ───
   app.post('/api/review', (req, res) => {
-    const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
-    const stages = req.body.stages || ['compile', 'lint', 'test'];
-    const autoFix = req.body.autoFix || false;
-
     try {
+      const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
+      const stages = req.body.stages || ['compile', 'lint', 'test'];
+      const autoFix = req.body.autoFix || false;
       const { config: fileConfig } = loadConfig(projectPath);
       const agent = new CodeReviewAgent({
         ...(fileConfig ?? {}),
@@ -109,11 +108,10 @@ export function createServer(defaultProjectPath?: string): express.Express {
 
   // ─── 오케스트레이션 실행 ───
   app.post('/api/orchestrate', (req, res) => {
-    const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
-    const phases: TaskPhase[] = req.body.phases || ['plan', 'code', 'review', 'test', 'security', 'browser', 'deploy'];
-    const failFast = req.body.failFast || false;
-
     try {
+      const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
+      const phases: TaskPhase[] = req.body.phases || ['plan', 'code', 'review', 'test', 'security', 'browser', 'deploy'];
+      const failFast = req.body.failFast || false;
       const orchestrator = Orchestrator.quickStart(projectPath);
       const config = orchestrator.getConfig();
       config.pipeline.phases = phases;
@@ -152,10 +150,9 @@ export function createServer(defaultProjectPath?: string): express.Express {
 
   // ─── 히스토리 ───
   app.get('/api/history', (req, res) => {
-    const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
-    const count = parseInt(req.query.count as string, 10) || 20;
-
     try {
+      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
+      const count = parseInt(req.query.count as string, 10) || 20;
       const history = loadHistory(projectPath);
       const entries = history.entries.slice(-count);
       res.json({ total: history.entries.length, entries });
@@ -166,9 +163,8 @@ export function createServer(defaultProjectPath?: string): express.Express {
 
   // ─── 트렌드 ───
   app.get('/api/trend', (req, res) => {
-    const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
-
     try {
+      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
       const trend = analyzeTrend(projectPath);
       const text = formatTrendReport(trend);
       res.json({ ...trend, text });
