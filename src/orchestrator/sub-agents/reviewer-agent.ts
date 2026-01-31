@@ -91,13 +91,34 @@ export class ReviewerAgent extends BaseSubAgent {
       }
     }
 
+    // ── SharedKnowledge: Planner 아키텍처 가이드라인 참조 ──
+    const sharedCtx = this.getSharedContext(task);
+    if (sharedCtx) {
+      enhancedOutputs.push('[REVIEWER] ── SharedKnowledge Context Injected ──');
+      enhancedOutputs.push(`[REVIEWER] 이전 Phase 인사이트 ${sharedCtx.length}자 참조`);
+    }
+
     // 코드 스멜 심층 분석
     const smellIssues = this.detectCodeSmells(projectPath);
     issues.push(...smellIssues);
 
+    // ── SharedKnowledge: 코드 스멜 인사이트 저장 ──
+    if (smellIssues.length > 0) {
+      this.addInsight('code-pattern', 'medium', `코드 스멜 ${smellIssues.length}건 감지`,
+        smellIssues.map((i) => i.message).join('\n'),
+        task, smellIssues.map((i) => i.file || '').filter(Boolean));
+    }
+
     // 복잡도 분석
     const complexityIssues = this.analyzeComplexity(projectPath);
     issues.push(...complexityIssues);
+
+    // ── SharedKnowledge: 복잡도 인사이트 저장 ──
+    if (complexityIssues.length > 0) {
+      this.addInsight('performance', 'medium', `복잡도 이슈 ${complexityIssues.length}건`,
+        complexityIssues.map((i) => i.message).join('\n'),
+        task, complexityIssues.map((i) => i.file || '').filter(Boolean));
+    }
 
     // 트렌드 분석 추가
     const trendReport = agent.getTrendReport();

@@ -17,7 +17,7 @@ import { execSync } from 'child_process';
 import { Task, TaskResult } from '../types';
 import { BaseSubAgent } from './base-agent';
 import { generateCode, autoDetectProvider, AICodeResponse } from '../ai-provider';
-import { CodeGenV2, DEFAULT_CODEGEN_V2_CONFIG } from '../code-gen-v2';
+import { CodeGenV2, DEFAULT_CODEGEN_V2_CONFIG, ValidationResult } from '../code-gen-v2';
 
 export class CoderAgent extends BaseSubAgent {
   protected getAgentName(): string {
@@ -101,57 +101,109 @@ export class CoderAgent extends BaseSubAgent {
     outputs.push(`[CODER] Source files: ${fileAnalysis.sourceFiles}`);
     outputs.push(`[CODER] Test files: ${fileAnalysis.testFiles}`);
 
-    // 5. AI 코드 생성 (프로바이더가 있을 때)
+    // 5. AI 코드 생성 + 검증 + 재생성 루프 (프로바이더가 있을 때)
     if (aiConfig) {
-      const codeResult = this.generateCodeSync(aiConfig, task, projectPath, fileAnalysis);
-      outputs.push(...codeResult.logs);
-      issues.push(...codeResult.issues);
-      artifacts.push(...codeResult.artifacts);
+      const maxAttempts = codeGenV2.getConfig().maxAttempts;
+      let currentPrompt: string | null = null;
 
-      // 6. CodeGenV2 자동 검증 (생성된 코드 품질 검사)
-      if (codeResult.artifacts.length > 0) {
-        outputs.push('[CODER] ── CodeGenV2 Auto-Validation ──');
-        for (const artifact of codeResult.artifacts) {
-          const filePath = path.resolve(projectPath, artifact);
-          if (fs.existsSync(filePath)) {
-            try {
-              const code = fs.readFileSync(filePath, 'utf-8');
-              const result = codeGenV2.validateAndScore(code, artifact);
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (attempt > 1) {
+          outputs.push(`[CODER] ── 재생성 시도 ${attempt}/${maxAttempts} (검증 실패 피드백 반영) ──`);
+        }
 
-              outputs.push(`[CODER] 검증: ${artifact}`);
-              outputs.push(`[CODER]   품질 점수: ${result.metrics.qualityScore}/100`);
-              outputs.push(`[CODER]   복잡도: ${result.metrics.complexityScore}/100`);
-              outputs.push(`[CODER]   최대 함수 길이: ${result.metrics.maxFunctionLength}줄`);
-              outputs.push(`[CODER]   타입 어노테이션: ${result.metrics.hasTypeAnnotations ? '✓' : '✗'}`);
-              outputs.push(`[CODER]   에러 핸들링: ${result.metrics.hasErrorHandling ? '✓' : '✗'}`);
-              outputs.push(`[CODER]   품질 게이트: ${result.gateResult.passed ? '✓ PASS' : '✗ FAIL'}`);
+        const codeResult = this.generateCodeSync(aiConfig, task, projectPath, fileAnalysis, currentPrompt || undefined);
+        outputs.push(...codeResult.logs);
 
-              if (!result.gateResult.passed) {
-                for (const reason of result.gateResult.reasons) {
-                  issues.push(this.createIssue('warning', `[CodeGenV2] ${artifact}: ${reason}`, { file: artifact }));
+        // 6. CodeGenV2 자동 검증 (생성된 코드 품질 검사)
+        if (codeResult.artifacts.length > 0) {
+          outputs.push('[CODER] ── CodeGenV2 Auto-Validation ──');
+          let allValid = true;
+          const allValidations: ValidationResult[] = [];
+
+          for (const artifact of codeResult.artifacts) {
+            const validFilePath = path.resolve(projectPath, artifact);
+            if (fs.existsSync(validFilePath)) {
+              try {
+                const code = fs.readFileSync(validFilePath, 'utf-8');
+                const result = codeGenV2.validateAndScore(code, artifact);
+
+                outputs.push(`[CODER] 검증: ${artifact}`);
+                outputs.push(`[CODER]   품질 점수: ${result.metrics.qualityScore}/100`);
+                outputs.push(`[CODER]   복잡도: ${result.metrics.complexityScore}/100`);
+                outputs.push(`[CODER]   최대 함수 길이: ${result.metrics.maxFunctionLength}줄`);
+                outputs.push(`[CODER]   타입 어노테이션: ${result.metrics.hasTypeAnnotations ? '✓' : '✗'}`);
+                outputs.push(`[CODER]   에러 핸들링: ${result.metrics.hasErrorHandling ? '✓' : '✗'}`);
+                outputs.push(`[CODER]   품질 게이트: ${result.gateResult.passed ? '✓ PASS' : '✗ FAIL'}`);
+
+                if (!result.overallValid) allValid = false;
+                allValidations.push(...result.validations);
+
+                if (!result.gateResult.passed) {
+                  for (const reason of result.gateResult.reasons) {
+                    codeResult.issues.push(this.createIssue('warning', `[CodeGenV2] ${artifact}: ${reason}`, { file: artifact }));
+                  }
                 }
-              }
 
-              for (const v of result.validations) {
-                for (const e of v.errors) {
-                  issues.push(this.createIssue('error', `[${v.stage}] ${artifact}: ${e}`, { file: artifact }));
+                for (const v of result.validations) {
+                  for (const e of v.errors) {
+                    codeResult.issues.push(this.createIssue('error', `[${v.stage}] ${artifact}: ${e}`, { file: artifact }));
+                  }
                 }
-              }
 
-              // KB에 코드 생성 결과 인사이트 저장
-              this.addInsight(
-                'code-pattern',
-                result.overallValid ? 'info' : 'medium',
-                `코드 생성 검증: ${artifact}`,
-                `품질 ${result.metrics.qualityScore}/100, 복잡도 ${result.metrics.complexityScore}/100, 게이트 ${result.gateResult.passed ? 'PASS' : 'FAIL'}`,
-                task,
-                [artifact],
-                { qualityScore: result.metrics.qualityScore, complexityScore: result.metrics.complexityScore },
-              );
-            } catch {
-              outputs.push(`[CODER]   ${artifact}: 검증 스킵 (파일 읽기 실패)`);
+                // KB에 코드 생성 결과 인사이트 저장
+                this.addInsight(
+                  'code-pattern',
+                  result.overallValid ? 'info' : 'medium',
+                  `코드 생성 검증 (시도 ${attempt}): ${artifact}`,
+                  `품질 ${result.metrics.qualityScore}/100, 복잡도 ${result.metrics.complexityScore}/100, 게이트 ${result.gateResult.passed ? 'PASS' : 'FAIL'}`,
+                  task,
+                  [artifact],
+                  { qualityScore: result.metrics.qualityScore, complexityScore: result.metrics.complexityScore, attempt },
+                );
+              } catch {
+                outputs.push(`[CODER]   ${artifact}: 검증 스킵 (파일 읽기 실패)`);
+              }
             }
           }
+
+          // 모든 검증 통과 → 루프 종료
+          if (allValid) {
+            outputs.push(`[CODER] ✓ 모든 검증 통과 (시도 ${attempt}/${maxAttempts})`);
+            issues.push(...codeResult.issues);
+            artifacts.push(...codeResult.artifacts);
+            break;
+          }
+
+          // 마지막 시도 → 실패한 채 종료
+          if (attempt >= maxAttempts) {
+            outputs.push(`[CODER] ✗ 최대 재생성 횟수 도달 (${maxAttempts}회) — 마지막 결과 사용`);
+            issues.push(...codeResult.issues);
+            artifacts.push(...codeResult.artifacts);
+            break;
+          }
+
+          // 검증 실패 → 에러 피드백 프롬프트 생성하여 다음 시도에 사용
+          const basePrompt = currentPrompt || this.buildCodePrompt(task, projectPath, this.gatherContext(projectPath));
+          currentPrompt = codeGenV2.buildErrorFeedbackPrompt(basePrompt, allValidations, attempt);
+          outputs.push(`[CODER] 검증 실패 → 에러 피드백 반영하여 재생성 예정`);
+
+          // 로컬 자동 수정 시도 (AI 재호출 없이 수정 가능한 경우)
+          for (const artifact of codeResult.artifacts) {
+            for (const v of allValidations) {
+              for (const e of v.errors) {
+                const localFix = codeGenV2.tryLocalFix(e, artifact, projectPath);
+                if (localFix) {
+                  const fixPath = path.resolve(projectPath, artifact);
+                  fs.writeFileSync(fixPath, localFix, 'utf-8');
+                  outputs.push(`[CODER] 로컬 수정 적용: ${artifact} (${v.stage} 에러)`);
+                }
+              }
+            }
+          }
+        } else {
+          // 코드 생성 실패 (artifact 없음)
+          issues.push(...codeResult.issues);
+          break;
         }
       }
     }
@@ -192,6 +244,7 @@ export class CoderAgent extends BaseSubAgent {
     task: Task,
     projectPath: string,
     fileAnalysis: { totalFiles: number; sourceFiles: number; testFiles: number },
+    promptOverride?: string,
   ): { logs: string[]; issues: TaskResult['issues']; artifacts: string[] } {
     const logs: string[] = [];
     const issues: TaskResult['issues'] = [];
@@ -202,9 +255,9 @@ export class CoderAgent extends BaseSubAgent {
     // 프로젝트 컨텍스트 수집
     const context = this.gatherContext(projectPath);
 
-    // 프롬프트 생성
-    const prompt = this.buildCodePrompt(task, projectPath, context);
-    logs.push(`[CODER] Prompt length: ${prompt.length} chars`);
+    // 프롬프트 생성 (재생성 시 오버라이드 프롬프트 사용)
+    const prompt = promptOverride || this.buildCodePrompt(task, projectPath, context);
+    logs.push(`[CODER] Prompt length: ${prompt.length} chars${promptOverride ? ' (에러 피드백 포함)' : ''}`);
     logs.push(`[CODER] Context: ${context.length} chars from ${fileAnalysis.sourceFiles} source files`);
 
     // AI API 호출 (async를 sync로 래핑)

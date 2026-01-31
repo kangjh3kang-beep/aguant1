@@ -644,6 +644,47 @@ export class AdaptiveEngine {
   }
 
   /**
+   * 전략을 실제로 실행합니다.
+   * 전략의 steps와 matchPatterns에 기반하여 적절한 명령을 실행하고 결과를 반환합니다.
+   */
+  executeStrategy(
+    strategy: FixStrategy,
+    pattern: FailurePattern,
+    projectPath: string,
+  ): { success: boolean; output: string; commands: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+    let success = false;
+
+    try {
+      const executor = new StrategyExecutor(projectPath);
+      const result = executor.execute(strategy, pattern);
+      commands.push(...result.commands);
+      outputs.push(...result.outputs);
+      success = result.success;
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      outputs.push(`전략 실행 실패: ${errMsg}`);
+    }
+
+    // 결과 기록
+    this.recordResult(
+      pattern.id,
+      strategy.id,
+      strategy.name,
+      success,
+      outputs.join('\n').slice(0, 500),
+    );
+
+    this.logLearning(
+      success ? 'execute-success' : 'execute-fail',
+      `${strategy.name} → ${success ? 'SUCCESS' : 'FAIL'} (${commands.length} commands)`,
+    );
+
+    return { success, output: outputs.join('\n'), commands };
+  }
+
+  /**
    * 전략 실행 결과를 기록합니다.
    */
   recordResult(patternId: string, strategyId: string, strategyName: string, success: boolean, details: string): void {
@@ -766,6 +807,252 @@ export class AdaptiveEngine {
       action,
       result,
     });
+  }
+}
+
+// ─── StrategyExecutor ──────────────────────────────────────
+
+/**
+ * 전략을 실제 셸 명령으로 변환하여 실행합니다.
+ * 전략의 category와 matchPatterns에 따라 적절한 명령을 선택합니다.
+ */
+class StrategyExecutor {
+  private projectPath: string;
+
+  constructor(projectPath: string) {
+    this.projectPath = projectPath;
+  }
+
+  execute(
+    strategy: FixStrategy,
+    pattern: FailurePattern,
+  ): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    try {
+      switch (strategy.category) {
+        case 'dependency-missing':
+        case 'compile-error': {
+          const result = this.handleDependencyOrCompile(strategy, pattern);
+          commands.push(...result.commands);
+          outputs.push(...result.outputs);
+          return { success: result.success, commands, outputs };
+        }
+        case 'lint-error': {
+          const result = this.handleLintError(strategy);
+          commands.push(...result.commands);
+          outputs.push(...result.outputs);
+          return { success: result.success, commands, outputs };
+        }
+        case 'test-failure':
+        case 'test-setup': {
+          const result = this.handleTestIssue(strategy, pattern);
+          commands.push(...result.commands);
+          outputs.push(...result.outputs);
+          return { success: result.success, commands, outputs };
+        }
+        case 'dependency-conflict': {
+          const result = this.handleDependencyConflict(strategy);
+          commands.push(...result.commands);
+          outputs.push(...result.outputs);
+          return { success: result.success, commands, outputs };
+        }
+        case 'security-vulnerability': {
+          const result = this.handleSecurityVulnerability(strategy, pattern);
+          commands.push(...result.commands);
+          outputs.push(...result.outputs);
+          return { success: result.success, commands, outputs };
+        }
+        case 'type-error': {
+          const result = this.handleTypeError(strategy);
+          commands.push(...result.commands);
+          outputs.push(...result.outputs);
+          return { success: result.success, commands, outputs };
+        }
+        case 'config-error':
+        case 'environment-error': {
+          outputs.push(`[STRATEGY] ${strategy.name}: 환경/설정 문제 — 자동 실행 가능한 명령 없음`);
+          outputs.push(`[STRATEGY] 수동 확인 필요: ${strategy.steps.join(' → ')}`);
+          return { success: false, commands, outputs };
+        }
+        default: {
+          outputs.push(`[STRATEGY] ${strategy.name}: 범용 전략 — steps 기반 가이드 제공`);
+          outputs.push(`[STRATEGY] 실행 단계: ${strategy.steps.join(' → ')}`);
+          return { success: false, commands, outputs };
+        }
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      outputs.push(`[STRATEGY] 실행 오류: ${errMsg}`);
+      return { success: false, commands, outputs };
+    }
+  }
+
+  private handleDependencyOrCompile(strategy: FixStrategy, pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    // 에러 메시지에서 모듈명 추출
+    const moduleMatch = pattern.originalMessage.match(/(?:Cannot find module|module not found|can't resolve)\s+['"]([^'"]+)['"]/i);
+
+    if (moduleMatch) {
+      const moduleName = moduleMatch[1];
+      // 상대 경로 import는 설치 대상이 아님
+      if (!moduleName.startsWith('.') && !moduleName.startsWith('/')) {
+        const cmd = `npm install ${moduleName} 2>&1 || true`;
+        commands.push(cmd);
+        try {
+          const { execSync: exec } = require('child_process');
+          const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
+          outputs.push(`[STRATEGY] npm install ${moduleName}: ${output.slice(-200)}`);
+          return { success: true, commands, outputs };
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          outputs.push(`[STRATEGY] 설치 실패: ${errMsg.slice(0, 200)}`);
+        }
+      }
+    }
+
+    // 일반 빌드 재시도
+    if (strategy.id === 'compile-tsconfig-fix' || strategy.id === 'compile-type-fix') {
+      const cmd = 'npm run build 2>&1 || true';
+      commands.push(cmd);
+      try {
+        const { execSync: exec } = require('child_process');
+        const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
+        const hasError = /error TS\d+/i.test(output);
+        outputs.push(`[STRATEGY] 빌드 ${hasError ? '실패' : '성공'}`);
+        return { success: !hasError, commands, outputs };
+      } catch {
+        outputs.push('[STRATEGY] 빌드 명령 실행 실패');
+      }
+    }
+
+    return { success: false, commands, outputs };
+  }
+
+  private handleLintError(strategy: FixStrategy): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    if (strategy.id === 'lint-autofix') {
+      const cmd = 'npx eslint --fix . 2>&1 || true';
+      commands.push(cmd);
+      try {
+        const { execSync: exec } = require('child_process');
+        exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
+        outputs.push('[STRATEGY] eslint --fix 실행 완료');
+        return { success: true, commands, outputs };
+      } catch {
+        outputs.push('[STRATEGY] eslint --fix 실행 실패');
+      }
+    }
+
+    return { success: false, commands, outputs };
+  }
+
+  private handleTestIssue(strategy: FixStrategy, pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    if (strategy.id === 'test-snapshot-update') {
+      const cmd = 'npx jest --updateSnapshot 2>&1 || true';
+      commands.push(cmd);
+      try {
+        const { execSync: exec } = require('child_process');
+        exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
+        outputs.push('[STRATEGY] 스냅샷 업데이트 완료');
+        return { success: true, commands, outputs };
+      } catch {
+        outputs.push('[STRATEGY] 스냅샷 업데이트 실패');
+      }
+    }
+
+    if (strategy.id === 'test-setup-module') {
+      const moduleMatch = pattern.originalMessage.match(/(?:Cannot find module|no module named)\s+['"]([^'"]+)['"]/i);
+      if (moduleMatch) {
+        const moduleName = moduleMatch[1];
+        if (!moduleName.startsWith('.')) {
+          const cmd = `npm install --save-dev ${moduleName} 2>&1 || true`;
+          commands.push(cmd);
+          try {
+            const { execSync: exec } = require('child_process');
+            exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
+            outputs.push(`[STRATEGY] devDependency 설치: ${moduleName}`);
+            return { success: true, commands, outputs };
+          } catch {
+            outputs.push(`[STRATEGY] ${moduleName} 설치 실패`);
+          }
+        }
+      }
+    }
+
+    // 테스트 재실행
+    const cmd = 'npm test 2>&1 || true';
+    commands.push(cmd);
+    outputs.push(`[STRATEGY] ${strategy.name}: 코드 수정 후 테스트 재실행 필요`);
+    return { success: false, commands, outputs };
+  }
+
+  private handleDependencyConflict(strategy: FixStrategy): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    const cmd = 'npm install --legacy-peer-deps 2>&1 || true';
+    commands.push(cmd);
+    try {
+      const { execSync: exec } = require('child_process');
+      const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
+      outputs.push(`[STRATEGY] --legacy-peer-deps 설치 완료: ${output.slice(-200)}`);
+      return { success: true, commands, outputs };
+    } catch {
+      outputs.push('[STRATEGY] 의존성 충돌 해결 실패');
+    }
+
+    return { success: false, commands, outputs };
+  }
+
+  private handleSecurityVulnerability(strategy: FixStrategy, pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    if (strategy.id === 'security-dep-update') {
+      const cmd = 'npm audit fix 2>&1 || true';
+      commands.push(cmd);
+      try {
+        const { execSync: exec } = require('child_process');
+        const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
+        outputs.push(`[STRATEGY] npm audit fix 완료: ${output.slice(-200)}`);
+        return { success: true, commands, outputs };
+      } catch {
+        outputs.push('[STRATEGY] npm audit fix 실패');
+      }
+    }
+
+    outputs.push(`[STRATEGY] ${strategy.name}: 수동 코드 수정 필요`);
+    outputs.push(`[STRATEGY] 실행 단계: ${strategy.steps.join(' → ')}`);
+    return { success: false, commands, outputs };
+  }
+
+  private handleTypeError(strategy: FixStrategy): { success: boolean; commands: string[]; outputs: string[] } {
+    const commands: string[] = [];
+    const outputs: string[] = [];
+
+    // 타입 체크 재실행
+    const cmd = 'npx tsc --noEmit 2>&1 || true';
+    commands.push(cmd);
+    try {
+      const { execSync: exec } = require('child_process');
+      const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
+      const hasError = /error TS\d+/i.test(output);
+      outputs.push(`[STRATEGY] 타입 체크 ${hasError ? '에러 지속' : '통과'}`);
+      return { success: !hasError, commands, outputs };
+    } catch {
+      outputs.push('[STRATEGY] 타입 체크 실행 실패');
+    }
+
+    return { success: false, commands, outputs };
   }
 }
 

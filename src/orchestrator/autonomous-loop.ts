@@ -263,8 +263,10 @@ export class AutonomousLoop {
         const rootCauses = this.analyzeRootCauses(analysis, pipelineResult);
         this.state.rootCauses.push(...rootCauses);
 
-        // AdaptiveEngine으로 각 이슈에 최적 전략 선택
+        // AdaptiveEngine으로 각 이슈에 최적 전략 선택 + 실행
         const allIssues = pipelineResult.tasks.flatMap((t) => t.result?.issues || []);
+        let strategiesExecuted = 0;
+        let strategiesSucceeded = 0;
         for (const issue of allIssues.filter((i) => i.severity === 'error' || i.severity === 'critical').slice(0, 10)) {
           const adaptive = this.adaptiveEngine.analyzeAndSelect(
             analysis.failedPhase || 'review',
@@ -274,7 +276,25 @@ export class AutonomousLoop {
           if (adaptive.strategy) {
             this.log(`  [ADAPTIVE] ${adaptive.strategy.name} (성공률 ${Math.round(adaptive.strategy.successRate * 100)}%)`);
             this.log(`    근거: ${adaptive.reasoning}`);
+
+            // 전략 실행
+            const execResult = this.adaptiveEngine.executeStrategy(
+              adaptive.strategy,
+              adaptive.pattern,
+              this.project.rootPath,
+            );
+            strategiesExecuted++;
+            if (execResult.success) strategiesSucceeded++;
+            this.log(`    실행: ${execResult.success ? '✓ 성공' : '✗ 실패'} (${execResult.commands.length}개 명령)`);
+            if (execResult.output) {
+              for (const line of execResult.output.split('\n').slice(0, 3)) {
+                this.log(`      ${line}`);
+              }
+            }
           }
+        }
+        if (strategiesExecuted > 0) {
+          this.log(`  [ADAPTIVE] 전략 실행 요약: ${strategiesSucceeded}/${strategiesExecuted} 성공`);
         }
 
         for (const rc of rootCauses) {

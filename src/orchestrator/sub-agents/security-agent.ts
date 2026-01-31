@@ -51,6 +51,14 @@ export class SecurityAgent extends BaseSubAgent {
     outputs.push(`[SECURITY] 강화된 지시: ${enhanced.enhancedDescription.slice(0, 120)}...`);
     outputs.push(`[SECURITY] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 (STRIDE 위협 모델링 기반)`);
     outputs.push('');
+
+    // ── SharedKnowledge: 이전 Phase 컨텍스트 참조 ──
+    const sharedCtx = this.getSharedContext(task);
+    if (sharedCtx) {
+      outputs.push('[SECURITY] ── SharedKnowledge Context Injected ──');
+      outputs.push(`[SECURITY] 이전 Phase 인사이트 ${sharedCtx.length}자 참조`);
+    }
+
     outputs.push('[SECURITY] Starting security audit...');
 
     // 1. 의존성 취약점 감사
@@ -72,6 +80,26 @@ export class SecurityAgent extends BaseSubAgent {
     const authResult = this.auditAuthPatterns(projectPath);
     outputs.push(...authResult.logs);
     issues.push(...authResult.issues);
+
+    // ── SharedKnowledge: 보안 인사이트 저장 ──
+    if (depAudit.issues.length > 0) {
+      this.addInsight('dependency', 'high', `의존성 취약점 ${depAudit.issues.length}건`,
+        depAudit.issues.map((i) => i.message).join('\n'), task);
+    }
+    if (secretScan.issues.length > 0) {
+      this.addInsight('vulnerability', 'critical', `시크릿 노출 ${secretScan.issues.length}건`,
+        secretScan.issues.map((i) => i.message).join('\n'),
+        task, secretScan.issues.map((i) => i.file || '').filter(Boolean));
+    }
+    if (sastResult.issues.length > 0) {
+      this.addInsight('vulnerability', 'high', `SAST 취약점 ${sastResult.issues.length}건`,
+        sastResult.issues.map((i) => i.message).join('\n'),
+        task, sastResult.issues.map((i) => i.file || '').filter(Boolean));
+    }
+    if (authResult.issues.length > 0) {
+      this.addInsight('vulnerability', 'medium', `인증/보안 설정 이슈 ${authResult.issues.length}건`,
+        authResult.issues.map((i) => i.message).join('\n'), task);
+    }
 
     // 결과 요약
     const critical = issues.filter((i) => i.severity === 'critical').length;

@@ -52,6 +52,13 @@ export class DeployerAgent extends BaseSubAgent {
     outputs.push(`[DEPLOYER] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 (SRE 기반)`);
     outputs.push('');
 
+    // ── SharedKnowledge: 이전 Phase 컨텍스트 참조 ──
+    const sharedCtx = this.getSharedContext(task);
+    if (sharedCtx) {
+      outputs.push('[DEPLOYER] ── SharedKnowledge Context Injected ──');
+      outputs.push(`[DEPLOYER] 이전 Phase 인사이트 ${sharedCtx.length}자 참조`);
+    }
+
     // 0단계: 배포 전 체크리스트 검증
     const preCheck = this.preDeployChecklist(projectPath);
     outputs.push(...preCheck.logs);
@@ -62,7 +69,15 @@ export class DeployerAgent extends BaseSubAgent {
     outputs.push(...buildResult.logs);
     issues.push(...buildResult.issues);
 
+    // ── SharedKnowledge: 배포 전 체크리스트 인사이트 저장 ──
+    if (preCheck.issues.length > 0) {
+      this.addInsight('deploy-readiness', 'medium', `배포 전 체크 ${preCheck.issues.length}건`,
+        preCheck.issues.map((i) => i.message).join('\n'), task);
+    }
+
     if (!buildResult.success) {
+      this.addInsight('deploy-readiness', 'critical', '빌드 실패',
+        buildResult.issues.map((i) => i.message).join('\n'), task);
       return {
         success: false,
         output: outputs.join('\n'),
@@ -71,6 +86,10 @@ export class DeployerAgent extends BaseSubAgent {
         duration: 0,
       };
     }
+
+    // ── SharedKnowledge: 빌드 성공 인사이트 ──
+    this.addInsight('deploy-readiness', 'info', '빌드 성공',
+      `프로젝트 빌드 완료`, task);
 
     // 2단계: 배포 (설정에 따라)
     const deployConfig = this.detectDeployTarget(projectPath);

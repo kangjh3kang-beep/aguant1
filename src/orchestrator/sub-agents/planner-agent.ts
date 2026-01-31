@@ -182,12 +182,37 @@ export class PlannerAgent extends BaseSubAgent {
     const enhanced = this.enhanceTask(task);
     const enhancedTask = { ...task, description: enhanced.enhancedDescription };
 
+    // ── SharedKnowledge: 이전 Phase 컨텍스트 참조 ──
+    const sharedCtx = this.getSharedContext(task);
+    if (sharedCtx) {
+      enhancedTask.description += `\n\n${sharedCtx}`;
+    }
+
     const analysis = this.analyzeProject(projectPath);
     const plan = this.generatePlan(enhancedTask, analysis, enhanced);
 
     // 아키텍처 안티패턴 탐지
     const antipatternIssues = this.detectAntiPatterns(analysis);
     analysis.issues.push(...antipatternIssues);
+
+    // ── SharedKnowledge: 아키텍처 인사이트 저장 ──
+    this.addInsight('architecture', 'info', `프로젝트 구조 분석: ${analysis.structure.length}개 디렉토리`,
+      `기술 스택: ${analysis.techStack.join(', ')}\n디렉토리: ${analysis.structure.slice(0, 10).join(', ')}`,
+      task, [], { structure: analysis.structure.slice(0, 20), techStack: analysis.techStack });
+
+    if (antipatternIssues.length > 0) {
+      this.addInsight('architecture', 'medium', `안티패턴 ${antipatternIssues.length}건 감지`,
+        antipatternIssues.map((i) => i.message).join('\n'),
+        task, antipatternIssues.map((i) => i.file || '').filter(Boolean));
+    }
+
+    // 리스크 인사이트 저장
+    const riskIssues = analysis.issues.filter((i) => i.severity === 'warning' || i.severity === 'error');
+    if (riskIssues.length > 0) {
+      this.addInsight('risk', 'medium', `리스크 항목 ${riskIssues.length}건`,
+        riskIssues.map((i) => `[${i.severity}] ${i.message}`).join('\n'),
+        task);
+    }
 
     return {
       success: true,

@@ -49,6 +49,13 @@ export class TesterAgent extends BaseSubAgent {
     outputs.push(`[TESTER] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 적용`);
     outputs.push('');
 
+    // ── SharedKnowledge: 이전 Phase 컨텍스트 참조 ──
+    const sharedCtx = this.getSharedContext(task);
+    if (sharedCtx) {
+      outputs.push('[TESTER] ── SharedKnowledge Context Injected ──');
+      outputs.push(`[TESTER] 이전 Phase 인사이트 ${sharedCtx.length}자 참조`);
+    }
+
     // 테스트 프레임워크 감지
     const framework = this.detectTestFramework(projectPath);
     outputs.push(`[TESTER] 감지된 프레임워크: ${framework}`);
@@ -57,6 +64,13 @@ export class TesterAgent extends BaseSubAgent {
     const testResult = this.runTests(projectPath, framework);
     outputs.push(...testResult.logs);
     issues.push(...testResult.issues);
+
+    // ── SharedKnowledge: 테스트 결과 인사이트 저장 ──
+    if (!testResult.passed) {
+      this.addInsight('test-coverage', 'high', `테스트 실패: ${testResult.issues.length}건`,
+        testResult.issues.map((i) => i.message).join('\n'),
+        task, testResult.issues.map((i) => i.file || '').filter(Boolean));
+    }
 
     // 커버리지 분석
     if (testResult.coverageReport) {
@@ -70,10 +84,24 @@ export class TesterAgent extends BaseSubAgent {
     outputs.push(...qualityResult.logs);
     issues.push(...qualityResult.issues);
 
+    // ── SharedKnowledge: 테스트 스멜 인사이트 저장 ──
+    if (qualityResult.issues.length > 0) {
+      this.addInsight('test-coverage', 'medium', `Test Smell ${qualityResult.issues.length}건`,
+        qualityResult.issues.map((i) => i.message).join('\n'),
+        task, qualityResult.issues.map((i) => i.file || '').filter(Boolean));
+    }
+
     // 커버리지 갭 분석 (테스트 없는 소스 파일 식별)
     const gapResult = this.analyzeCoverageGap(projectPath);
     outputs.push(...gapResult.logs);
     issues.push(...gapResult.issues);
+
+    // ── SharedKnowledge: 커버리지 갭 인사이트 저장 ──
+    if (gapResult.issues.length > 0) {
+      this.addInsight('test-coverage', 'medium', `커버리지 갭 ${gapResult.issues.length}건`,
+        gapResult.issues.map((i) => i.message).join('\n'),
+        task, gapResult.issues.map((i) => i.file || '').filter(Boolean));
+    }
 
     return {
       success: testResult.passed,

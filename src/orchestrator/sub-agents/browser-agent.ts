@@ -57,6 +57,14 @@ export class BrowserAgent extends BaseSubAgent {
     outputs.push(`[BROWSER] 강화된 지시: ${enhanced.enhancedDescription.slice(0, 120)}...`);
     outputs.push(`[BROWSER] 사고 프레임워크: ${enhanced.thinkingFramework.split('\n').filter((s) => s.includes('단계')).length}단계 (WCAG 2.1 기반)`);
     outputs.push('');
+
+    // ── SharedKnowledge: 이전 Phase 컨텍스트 참조 ──
+    const sharedCtx = this.getSharedContext(task);
+    if (sharedCtx) {
+      outputs.push('[BROWSER] ── SharedKnowledge Context Injected ──');
+      outputs.push(`[BROWSER] 이전 Phase 인사이트 ${sharedCtx.length}자 참조`);
+    }
+
     outputs.push('[BROWSER] Starting browser-based UI verification...');
     outputs.push(`[BROWSER] Viewport: ${this.browserConfig.viewport.width}x${this.browserConfig.viewport.height}`);
     outputs.push(`[BROWSER] Headless: ${this.browserConfig.headless}`);
@@ -99,7 +107,19 @@ export class BrowserAgent extends BaseSubAgent {
     outputs.push(...a11yResult.logs);
     issues.push(...a11yResult.issues);
 
-    const errorCount = issues.filter((i) => i.severity === 'critical' || i.severity === 'error').length;
+    // ── SharedKnowledge: 접근성/브라우저 인사이트 저장 ──
+    if (a11yResult.issues.length > 0) {
+      this.addInsight('accessibility', 'medium', `접근성 이슈 ${a11yResult.issues.length}건`,
+        a11yResult.issues.map((i) => i.message).join('\n'),
+        task, a11yResult.issues.map((i) => i.file || '').filter(Boolean));
+    }
+    const browserErrors = issues.filter((i) => i.severity === 'critical' || i.severity === 'error');
+    if (browserErrors.length > 0) {
+      this.addInsight('accessibility', 'high', `브라우저 에러 ${browserErrors.length}건`,
+        browserErrors.map((i) => i.message).join('\n'), task);
+    }
+
+    const errorCount = browserErrors.length;
     outputs.push('');
     outputs.push(`[BROWSER] Verification complete: ${errorCount} error(s), ${issues.length} total issue(s)`);
 
