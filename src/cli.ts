@@ -400,7 +400,9 @@ program
       ? branchResult.stdout.trim()
       : 'main';
     console.log(`  현재 브랜치: ${currentBranch}`);
-    const pullResult = runProcess(`git pull origin ${currentBranch}`, agentRoot, 60_000);
+    // 보안: 브랜치명 검증 (커맨드 인젝션 방지)
+    const safeBranch = /^[a-zA-Z0-9._\-\/]+$/.test(currentBranch) ? currentBranch : 'main';
+    const pullResult = runProcess(`git pull origin ${safeBranch}`, agentRoot, 60_000);
     if (pullResult.exitCode !== 0) {
       console.log('  Git pull 실패. 수동 업데이트:');
       console.log(`    cd ${agentRoot}`);

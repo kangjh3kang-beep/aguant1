@@ -341,8 +341,11 @@ export class DevServerManager {
   }
 
   private isPortInUse(port: number): boolean {
+    // 보안: 포트 번호 검증
+    const safePort = Number.isInteger(port) && port > 0 && port < 65536 ? port : 0;
+    if (safePort === 0) return false;
     try {
-      execSync(`lsof -i :${port} -P -n -t 2>/dev/null || ss -tlnp "sport = :${port}" 2>/dev/null | grep -q LISTEN`, {
+      execSync(`lsof -i :${safePort} -P -n -t 2>/dev/null || ss -tlnp "sport = :${safePort}" 2>/dev/null | grep -q LISTEN`, {
         encoding: 'utf-8',
         timeout: 3000,
       });
@@ -353,12 +356,14 @@ export class DevServerManager {
   }
 
   private waitForServer(port: number, timeout: number): boolean {
+    // 보안: 포트 번호 검증
+    const safePort = Number.isInteger(port) && port > 0 && port < 65536 ? port : 3000;
     const start = Date.now();
     const interval = 500;
 
     while (Date.now() - start < timeout) {
       try {
-        execSync(`node -e "const h=require('http');const r=h.get('http://localhost:${port}',res=>{process.exit(res.statusCode<500?0:1)});r.on('error',()=>process.exit(1));r.setTimeout(2000,()=>{r.destroy();process.exit(1)})"`, {
+        execSync(`node -e "const h=require('http');const r=h.get('http://localhost:${safePort}',res=>{process.exit(res.statusCode<500?0:1)});r.on('error',()=>process.exit(1));r.setTimeout(2000,()=>{r.destroy();process.exit(1)})"`, {
           timeout: 5000,
           stdio: 'ignore',
         });

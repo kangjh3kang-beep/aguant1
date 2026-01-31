@@ -36,7 +36,7 @@ export function loadConfig(projectPath: string): {
   let raw: string;
   try {
     raw = fs.readFileSync(configPath, 'utf-8');
-  } catch (err) {
+  } catch (err: unknown) {
     return {
       config: null,
       errors: [{ field: 'file', message: `Cannot read config file: ${configPath}` }],

@@ -1334,9 +1334,11 @@ ${topIssues || '없음'}
       const scriptPath = pathMod.join(tmpDir, `_judge_${Date.now()}.js`);
       const providerPath = pathMod.resolve(__dirname, 'ai-provider').replace(/\\/g, '\\\\');
 
+      // API 키를 환경변수로 전달 (디스크에 평문 기록 방지)
+      const safeConfig = { ...aiConfig, apiKey: undefined };
       const script = `
 const { generateCode } = require('${providerPath}');
-const config = ${JSON.stringify(aiConfig)};
+const config = { ...${JSON.stringify(safeConfig)}, apiKey: process.env._AG_AI_KEY };
 const request = { prompt: ${JSON.stringify(userPrompt)}, systemPrompt: ${JSON.stringify(systemPrompt)}, maxTokens: 512 };
 generateCode(config, request).then(r => {
   if (r.success) { process.stdout.write(JSON.stringify({ ok: true, text: r.code || '' })); }
@@ -1349,6 +1351,7 @@ generateCode(config, request).then(r => {
           encoding: 'utf-8',
           timeout: 30000,
           maxBuffer: 5 * 1024 * 1024,
+          env: { ...process.env, _AG_AI_KEY: aiConfig.apiKey || '' },
         });
         const parsed = JSON.parse(output);
         if (parsed.ok && parsed.text) {

@@ -296,9 +296,11 @@ export abstract class BaseSubAgent {
       const scriptPath = path.join(tmpDir, `_ai_${this.info.id}_${Date.now()}.js`);
       const providerPath = path.resolve(__dirname, '..', 'ai-provider').replace(/\\/g, '\\\\');
 
+      // API 키를 환경변수로 전달 (디스크에 평문 기록 방지)
+      const safeConfig = { ...aiConfig, apiKey: undefined };
       const script = `
 const { generateCode } = require('${providerPath}');
-const config = ${JSON.stringify(aiConfig)};
+const config = { ...${JSON.stringify(safeConfig)}, apiKey: process.env._AG_AI_KEY };
 const request = {
   prompt: ${JSON.stringify(userPrompt)},
   systemPrompt: ${JSON.stringify(systemPrompt)},
@@ -321,6 +323,7 @@ generateCode(config, request).then(r => {
           encoding: 'utf-8',
           timeout: opts?.timeout || 120000,
           maxBuffer: 10 * 1024 * 1024,
+          env: { ...process.env, _AG_AI_KEY: aiConfig.apiKey || '' },
         });
         const result = JSON.parse(output);
         if (result && typeof result === 'object' && result.ok) {

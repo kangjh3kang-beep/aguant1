@@ -276,14 +276,15 @@ export class CoderAgent extends BaseSubAgent {
         fs.mkdirSync(scriptDir, { recursive: true });
       }
 
-      // AI 호출 스크립트 생성 및 실행
+      // AI 호출 스크립트 생성 및 실행 (API 키는 환경변수로 전달)
+      const safeConfig = { ...aiConfig, apiKey: undefined };
       const script = `
 const { generateCode } = require('${path.resolve(__dirname, '..', 'ai-provider').replace(/\\/g, '\\\\')}');
-const config = ${JSON.stringify(aiConfig)};
+const config = { ...${JSON.stringify(safeConfig)}, apiKey: process.env._AG_AI_KEY };
 const request = {
   prompt: ${JSON.stringify(prompt)},
   language: 'typescript',
-  maxTokens: ${aiConfig.maxTokens || 8192},
+  maxTokens: ${safeConfig.maxTokens || 8192},
 };
 generateCode(config, request).then(r => {
   process.stdout.write(JSON.stringify(r));
@@ -299,6 +300,7 @@ generateCode(config, request).then(r => {
         timeout: 120000,
         maxBuffer: 10 * 1024 * 1024,
         cwd: projectPath,
+        env: { ...process.env, _AG_AI_KEY: aiConfig.apiKey || '' },
       });
 
       // 임시 스크립트 제거
@@ -338,7 +340,7 @@ generateCode(config, request).then(r => {
     }
 
     // 생성된 코드를 파일로 저장
-    const savedFiles = this.saveGeneratedCode(projectPath, task, response.code);
+    const savedFiles = this.saveGeneratedCode(projectPath, task, response.code, logs);
     logs.push(`[CODER] Generated ${savedFiles.length} file(s):`);
     for (const file of savedFiles) {
       logs.push(`  → ${file}`);
@@ -516,7 +518,7 @@ Follow ALL expert coding standards above. Output code only.
   /**
    * 생성된 코드를 파일로 저장합니다.
    */
-  private saveGeneratedCode(projectPath: string, task: Task, code: string): string[] {
+  private saveGeneratedCode(projectPath: string, task: Task, code: string, logs: string[] = []): string[] {
     const savedFiles: string[] = [];
 
     // "// FILE: path/to/file.ts" 패턴으로 분리
@@ -532,6 +534,12 @@ Follow ALL expert coding standards above. Output code only.
         const fileContent = code.slice(start, end).trim();
 
         const fullPath = path.resolve(projectPath, filePath);
+        // 보안: AI 생성 경로가 프로젝트 디렉토리 내부인지 검증
+        const resolvedProject = path.resolve(projectPath);
+        if (!fullPath.startsWith(resolvedProject + path.sep) && fullPath !== resolvedProject) {
+          logs.push(`[CODER] 보안 차단: 프로젝트 외부 경로 쓰기 시도 — ${filePath}`);
+          continue;
+        }
         this.writeCodeFile(fullPath, fileContent);
         savedFiles.push(filePath);
       }

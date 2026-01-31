@@ -498,9 +498,14 @@ export class PatchValidator {
         stdio: 'pipe',
       });
       return { valid: true, errors: [] };
-    } catch {
-      // 린트 실패는 경고로 처리 (패치 롤백까지는 하지 않음)
-      return { valid: true, errors: [] };
+    } catch (err: unknown) {
+      // 린트 실패: 에러 메시지를 추출하여 반환 (silent swallow 방지)
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const lintErrors = errMsg
+        .split('\n')
+        .filter((line) => /error|warning/i.test(line))
+        .slice(0, 10);
+      return { valid: false, errors: lintErrors.length > 0 ? lintErrors : ['lint check failed'] };
     }
   }
 }
