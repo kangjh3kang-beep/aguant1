@@ -94,8 +94,7 @@ function main(): void {
   const configPath = path.join(targetDir, CONFIG_FILENAME);
 
   if (fs.existsSync(configPath)) {
-    console.log(`\n  이미 ${CONFIG_FILENAME} 파일이 존재합니다: ${configPath}`);
-    console.log('  기존 설정을 유지합니다.\n');
+    console.log(`  이미 설정 파일이 존재합니다: ${CONFIG_FILENAME}`);
     return;
   }
 
@@ -104,6 +103,9 @@ function main(): void {
 
   try {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    console.log('\n  Antigravity Code Review Agent 초기화 완료!\n');
+    console.log(`  설정 파일: ${CONFIG_FILENAME}`);
+    console.log(`  실행: ag-review review\n`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\n  설정 파일 생성 실패: ${message}`);
@@ -111,28 +113,6 @@ function main(): void {
     process.exit(1);
   }
 
-  console.log('');
-  console.log('========================================');
-  console.log('  Antigravity Code Review Agent 초기화');
-  console.log('========================================');
-  console.log('');
-  console.log(`  설정 파일: ${configPath}`);
-  console.log('');
-  console.log('  감지된 프로젝트:');
-  console.log(`    TypeScript: ${detection.hasTypeScript ? 'Yes' : 'No'}`);
-  console.log(`    ESLint:     ${detection.hasEslint ? 'Yes' : 'No'}`);
-  console.log(`    Jest:       ${detection.hasJest ? 'Yes' : 'No'}`);
-  console.log(`    Vitest:     ${detection.hasVitest ? 'Yes' : 'No'}`);
-  console.log(`    Next.js:    ${detection.hasNextJs ? 'Yes' : 'No'}`);
-  console.log(`    React:      ${detection.hasReact ? 'Yes' : 'No'}`);
-  console.log('');
-  console.log('  사용 가능한 명령어:');
-  console.log('    ag-review review    전체 검증');
-  console.log('    ag-review check     빠른 검증 (컴파일+린트)');
-  console.log('    ag-review fix       자동 수정');
-  console.log('    ag-review preview   변경 파일만 검증');
-  console.log('    ag-review update    에이전트 업데이트');
-  console.log('');
 }
 
 main();

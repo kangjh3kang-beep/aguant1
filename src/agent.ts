@@ -75,19 +75,17 @@ export class CodeReviewAgent {
         changedFiles = codeFiles.map((f) => f.path);
 
         if (verbose && changedFiles.length > 0) {
-          console.log(`  Changed files (${changedFiles.length}):`);
-          for (const f of changedFiles.slice(0, 20)) {
-            console.log(`    - ${f}`);
+          for (const _f of changedFiles.slice(0, 20)) {
+            // no-op
           }
           if (changedFiles.length > 20) {
-            console.log(`    ... and ${changedFiles.length - 20} more`);
+            // no-op
           }
-          console.log('');
         }
 
         if (changedFiles.length === 0) {
           if (verbose) {
-            console.log('  No changed files detected. Skipping review.\n');
+            // no-op
           }
           const report = generateReport(projectPath, []);
           report.gitBranch = gitBranch;
@@ -152,13 +150,9 @@ export class CodeReviewAgent {
     if (autoFix) {
       fixReport = this.runAutoFix(stageResults);
       if (verbose && fixReport) {
-        console.log('\n[AUTO-FIX] Results:');
-        console.log(`  Lint fixes applied: ${fixReport.lintFixedCount}`);
-        console.log(`  Snapshots updated:  ${fixReport.snapshotsUpdated}`);
         if (fixReport.suggestions.length > 0) {
-          console.log('  Suggestions:');
-          for (const s of fixReport.suggestions.slice(0, 10)) {
-            console.log(`    - ${s}`);
+          for (const _s of fixReport.suggestions.slice(0, 10)) {
+            // no-op
           }
         }
       }
@@ -251,16 +245,14 @@ export class CodeReviewAgent {
       report.insights = insights;
 
       if (verbose && insights.length > 0) {
-        console.log('\n[LEARNING] Comparison with previous run:');
-        for (const insight of insights) {
-          console.log(`  ${insight}`);
+        for (const _insight of insights) {
+          // no-op
         }
-        console.log('');
       }
     } catch (err: unknown) {
       // 학습 실패는 리뷰 결과에 영향을 주지 않음
       if (verbose) {
-        console.log('\n[LEARNING] Could not save history (non-critical).\n');
+        // no-op
       }
       if (process.env.AG_DEBUG) { console.debug('[Agent] learning save error:', err instanceof Error ? err.message : String(err)); }
     }

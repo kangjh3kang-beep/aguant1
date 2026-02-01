@@ -229,16 +229,5 @@ export function createServer(defaultProjectPath?: string): express.Express {
 export function startDashboard(port: number, projectPath?: string): void {
   const app = createServer(projectPath);
   app.listen(port, () => {
-    console.log('');
-    console.log('╔══════════════════════════════════════════════╗');
-    console.log('║   ANTIGRAVITY WEB DASHBOARD                  ║');
-    console.log('╚══════════════════════════════════════════════╝');
-    console.log('');
-    console.log(`  대시보드:  http://localhost:${port}`);
-    console.log(`  프로젝트:  ${projectPath || process.cwd()}`);
-    console.log('');
-    console.log('  브라우저에서 위 주소를 열어주세요.');
-    console.log('  종료: Ctrl+C');
-    console.log('');
   });
 }

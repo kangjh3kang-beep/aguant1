@@ -38,7 +38,7 @@ export class PageInteractor {
 
   /** Scroll page */
   async scroll(page: PuppeteerPage, y: number): Promise<void> {
-    await page.evaluate((scrollY: number) => window.scrollBy(0, scrollY), y);
+    await page.evaluate(((scrollY: number) => window.scrollBy(0, scrollY)) as (...args: unknown[]) => void, y);
   }
 
   /** Wait for element to exist */

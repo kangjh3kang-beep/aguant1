@@ -155,6 +155,16 @@ interface ProjectAnalysis {
   depCount: number;
   issues: TaskResult['issues'];
   hasFile: (pattern: RegExp) => boolean;
+  // 코드 메트릭
+  metrics: {
+    totalLines: number;
+    avgFileLines: number;
+    functionCount: number;
+    classCount: number;
+    exportCount: number;
+    importGraph: Map<string, string[]>; // file → imported files
+    topImported: { file: string; count: number }[];
+  };
 }
 
 export class PlannerAgent extends BaseSubAgent {
@@ -356,10 +366,14 @@ export class PlannerAgent extends BaseSubAgent {
       issues.push({ severity: 'warning', message: 'Could not detect tech stack', autoFixable: false });
     }
 
+    // ── 코드 메트릭 수집 ──
+    const metrics = this.collectCodeMetrics(projectPath, allFiles);
+
     return {
       structure, techStack, sourceFileCount, testFileCount,
       totalFileCount: allFiles.length, largeFiles, indexFileCount, depCount, issues,
       hasFile: (pattern) => allFiles.some((f) => pattern.test(f)),
+      metrics,
     };
   }
 
@@ -421,26 +435,28 @@ export class PlannerAgent extends BaseSubAgent {
     L.push(`│  ${task.description}`);
     L.push('└──────────────────────────────────────────────────────────');
 
-    // ── 구현 계획 ──
+    // ── 코드 메트릭 (실제 측정값) ──
+    L.push('');
+    L.push('┌─ 코드 메트릭 (실측) ─────────────────────────────────');
+    L.push(`│  총 코드: ${analysis.metrics.totalLines.toLocaleString()}줄 (${analysis.metrics.avgFileLines}줄/파일 평균)`);
+    L.push(`│  함수: ${analysis.metrics.functionCount}개 | 클래스: ${analysis.metrics.classCount}개 | export: ${analysis.metrics.exportCount}개`);
+    if (analysis.metrics.topImported.length > 0) {
+      L.push('│');
+      L.push('│  핵심 모듈 (import 빈도순):');
+      for (const m of analysis.metrics.topImported.slice(0, 5)) {
+        L.push(`│    ${m.file} — ${m.count}회 참조`);
+      }
+    }
+    L.push('└──────────────────────────────────────────────────────────');
+
+    // ── 구현 계획 (프로젝트 분석 기반 동적 생성) ──
     L.push('');
     L.push('┌─ 구현 계획 ────────────────────────────────────────────');
-    L.push('│  Phase 1: 분석');
-    L.push('│    1. 기존 코드베이스 분석, 영향받는 파일 식별');
-    L.push('│    2. 의존관계 맵핑 및 영향도 평가');
-    L.push('│  Phase 2: 설계');
-    L.push('│    3. 모듈 인터페이스 및 데이터 흐름 설계');
-    L.push('│    4. 타입 시스템 설계 (입력/출력/중간 타입)');
-    L.push('│  Phase 3: 구현');
-    L.push('│    5. 핵심 로직 구현 (타입 안전성 보장)');
-    L.push('│    6. 에러 핸들링 및 엣지 케이스 처리');
-    L.push('│    7. 입력 검증 레이어 추가');
-    L.push('│  Phase 4: 검증');
-    L.push('│    8. 단위 테스트 작성 (Happy path + Edge cases)');
-    L.push('│    9. 통합 테스트 작성');
-    L.push('│   10. 코드 리뷰 실행 및 이슈 해결');
-    L.push('│  Phase 5: 완성');
-    L.push('│   11. 문서화 (JSDoc/README 업데이트)');
-    L.push('│   12. 성능 검증 및 최종 점검');
+    const steps = this.generateDynamicPlan(task, analysis);
+    let stepNum = 1;
+    for (const step of steps) {
+      L.push(`│  ${stepNum++}. ${step}`);
+    }
     L.push('└──────────────────────────────────────────────────────────');
 
     // ── 위험 평가 ──
@@ -486,6 +502,138 @@ export class PlannerAgent extends BaseSubAgent {
     L.push('');
     L.push('══════════════════════════════════════════════════════════════');
     return L.join('\n');
+  }
+
+  /**
+   * 프로젝트 분석 결과를 기반으로 실제 상황에 맞는 구현 계획을 동적 생성합니다.
+   * 고정 템플릿이 아니라, 프로젝트 구조/크기/기술 스택에 따라 달라집니다.
+   */
+  private generateDynamicPlan(task: Task, analysis: ProjectAnalysis): string[] {
+    const steps: string[] = [];
+
+    // 1. 영향받는 파일 분석 (태스크 키워드 기반)
+    const keywords = task.title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const relevantModules = analysis.metrics.topImported
+      .filter(m => keywords.some(k => m.file.toLowerCase().includes(k)))
+      .slice(0, 3);
+
+    if (relevantModules.length > 0) {
+      steps.push(`영향받는 핵심 모듈 분석: ${relevantModules.map(m => m.file).join(', ')}`);
+    } else {
+      steps.push('기존 코드베이스에서 관련 파일 및 의존관계 식별');
+    }
+
+    // 2. 프로젝트 크기에 따른 전략
+    if (analysis.sourceFileCount > 50) {
+      steps.push('대규모 프로젝트 — 모듈 경계 존중, 기존 패턴 따라 구현');
+    } else if (analysis.sourceFileCount > 10) {
+      steps.push('중규모 프로젝트 — 기존 디렉토리 구조에 맞춰 파일 배치');
+    } else {
+      steps.push('소규모 프로젝트 — 핵심 기능 직접 구현');
+    }
+
+    // 3. 기술 스택별 구현 전략
+    if (analysis.techStack.includes('TypeScript')) {
+      steps.push('TypeScript 타입/인터페이스 먼저 정의 (type-first 접근)');
+    }
+    if (analysis.techStack.includes('React') || analysis.techStack.includes('Next.js')) {
+      steps.push('컴포넌트 설계 → Props 타입 정의 → 렌더링 로직 구현');
+    }
+    if (analysis.techStack.includes('Express') || analysis.techStack.includes('NestJS') || analysis.techStack.includes('Fastify')) {
+      steps.push('API 엔드포인트 라우팅 → 비즈니스 로직 → 에러 핸들링');
+    }
+    if (analysis.techStack.includes('Prisma') || analysis.techStack.includes('Drizzle ORM')) {
+      steps.push('DB 스키마 변경 확인 → 마이그레이션 생성 → 쿼리 구현');
+    }
+
+    // 4. 테스트 전략
+    if (analysis.testFileCount > 0) {
+      const ratio = Math.round(analysis.testFileCount / Math.max(analysis.sourceFileCount, 1) * 100);
+      steps.push(`기존 테스트(${analysis.testFileCount}개, 커버리지 ${ratio}%) 패턴에 맞춰 테스트 추가`);
+    } else {
+      steps.push('단위 테스트 신규 작성 (Happy path + Edge case)');
+    }
+
+    // 5. 대형 파일 리팩토링
+    if (analysis.largeFiles.length > 0) {
+      const biggest = analysis.largeFiles.sort((a, b) => b.lines - a.lines)[0];
+      steps.push(`대형 파일 주의: ${biggest.name} (${biggest.lines}줄) — 함수 분리 필요 시 리팩토링`);
+    }
+
+    // 6. 검증
+    if (analysis.techStack.includes('TypeScript')) {
+      steps.push('npx tsc --noEmit 컴파일 검증');
+    }
+    steps.push('린트 검증 (eslint) + 테스트 실행 (jest)');
+    steps.push('코드 리뷰 실행 및 발견된 이슈 해결');
+
+    return steps;
+  }
+
+  /**
+   * 소스 파일에서 실제 코드 메트릭을 수집합니다.
+   * function/class 수, import 의존성 그래프, LOC 통계
+   */
+  private collectCodeMetrics(projectPath: string, allFiles: string[]): ProjectAnalysis['metrics'] {
+    let totalLines = 0;
+    let functionCount = 0;
+    let classCount = 0;
+    let exportCount = 0;
+    let fileCount = 0;
+    const importGraph = new Map<string, string[]>();
+    const importedBy = new Map<string, number>();
+
+    const sourceFiles = allFiles.filter(f =>
+      /\.(ts|js|tsx|jsx)$/.test(f) && !/\.(test|spec)\./i.test(f) && !f.includes('node_modules')
+    );
+
+    for (const relFile of sourceFiles.slice(0, 200)) {
+      try {
+        const content = fs.readFileSync(path.join(projectPath, relFile), 'utf-8');
+        const lines = content.split('\n');
+        totalLines += lines.length;
+        fileCount++;
+
+        // function/class/export 카운트
+        for (const line of lines) {
+          if (/^\s*(?:export\s+)?(?:async\s+)?function\s/.test(line)) functionCount++;
+          if (/^\s*(?:export\s+)?class\s/.test(line)) classCount++;
+          if (/^\s*export\s/.test(line)) exportCount++;
+        }
+
+        // import 의존성 그래프 구축
+        const imports: string[] = [];
+        for (const line of lines) {
+          const match = line.match(/^\s*import\s.*from\s+['"](\.[\w/.]+)['"]/);
+          if (match) {
+            imports.push(match[1]);
+            const target = match[1];
+            importedBy.set(target, (importedBy.get(target) || 0) + 1);
+          }
+        }
+        if (imports.length > 0) {
+          importGraph.set(relFile, imports);
+        }
+      } catch (_err: unknown) {
+        // 파일 읽기 실패 무시
+      }
+    }
+
+    // 가장 많이 import되는 모듈 (핵심 모듈)
+    const topImported = Array.from(importedBy.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([file, count]) => ({ file, count }));
+
+    return {
+      totalLines,
+      avgFileLines: fileCount > 0 ? Math.round(totalLines / fileCount) : 0,
+      functionCount,
+      classCount,
+      exportCount,
+      importGraph,
+      topImported,
+    };
   }
 
   /** 기술 스택에 맞는 전문가 권고 생성 */

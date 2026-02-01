@@ -14,7 +14,8 @@ export class ConsoleMonitor {
   attach(page: PuppeteerPage): void {
     this.entries = [];
 
-    page.on('console', (msg: { type: () => string; text: () => string; location: () => { url?: string; lineNumber?: number } }) => {
+    page.on('console', ((_msg: unknown) => {
+      const msg = _msg as { type: () => string; text: () => string; location: () => { url?: string; lineNumber?: number } };
       const typeMap: Record<string, ConsoleEntry['level']> = {
         log: 'log', info: 'info', warn: 'warn', error: 'error', debug: 'debug',
         warning: 'warn', verbose: 'debug', dir: 'log', table: 'log',
@@ -27,15 +28,16 @@ export class ConsoleMonitor {
         lineNumber: location?.lineNumber,
         timestamp: Date.now(),
       });
-    });
+    }) as (...args: unknown[]) => void);
 
-    page.on('pageerror', (err: Error) => {
+    page.on('pageerror', ((_err: unknown) => {
+      const err = _err as Error;
       this.entries.push({
         level: 'error',
         text: `[PageError] ${err.message}`,
         timestamp: Date.now(),
       });
-    });
+    }) as (...args: unknown[]) => void);
   }
 
   /** Return collected console logs */

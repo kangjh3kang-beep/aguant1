@@ -267,11 +267,11 @@ export class PipelineEngine {
 
     const allIssues = phaseTasks
       .filter((t) => t.result)
-      .flatMap((t) => t.result!.issues);
+      .flatMap((t) => t.result?.issues ?? []);
 
     const allArtifacts = phaseTasks
       .filter((t) => t.result)
-      .flatMap((t) => t.result!.artifacts);
+      .flatMap((t) => t.result?.artifacts ?? []);
 
     const keyFindings: string[] = [];
 

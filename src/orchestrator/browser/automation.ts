@@ -408,7 +408,7 @@ export class BrowserAutomation {
     try {
       await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: this.config.waitTimeout });
 
-      const links = await page.evaluate((base: string) => {
+      const links = await page.evaluate(((base: string) => {
         const anchors = document.querySelectorAll('a[href]');
         const urls: string[] = [];
         const origin = new URL(base).origin;
@@ -425,7 +425,7 @@ export class BrowserAutomation {
         });
 
         return urls;
-      }, baseUrl);
+      }) as (...args: unknown[]) => string[], baseUrl);
 
       await page.close();
       return links.slice(0, 20);

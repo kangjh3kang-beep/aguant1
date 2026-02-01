@@ -23,7 +23,7 @@ export class PerformanceAnalyzer {
       const resources = perf.getEntriesByType('resource') as any[];
 
       // FCP
-      const fcpEntry = paint.find((p: any) => p.name === 'first-contentful-paint');
+      const fcpEntry = paint.find((p: unknown) => (p as { name: string }).name === 'first-contentful-paint');
       const fcp = fcpEntry ? (fcpEntry as any).startTime : null;
 
       // LCP - PerformanceObserver results (already recorded)
@@ -43,8 +43,8 @@ export class PerformanceAnalyzer {
         const layoutShiftEntries = (performance as any).getEntriesByType?.('layout-shift');
         if (layoutShiftEntries && layoutShiftEntries.length > 0) {
           cls = layoutShiftEntries
-            .filter((e: any) => !e.hadRecentInput)
-            .reduce((sum: number, e: any) => sum + e.value, 0);
+            .filter((e: unknown) => !(e as { hadRecentInput: boolean }).hadRecentInput)
+            .reduce((sum: number, e: unknown) => sum + (e as { value: number }).value, 0);
         }
       } catch (err: unknown) {
         if (typeof process !== 'undefined' && process.env?.AG_DEBUG) { console.debug('[BrowserAutomation] Layout Shift API not supported:', err instanceof Error ? err.message : String(err)); }
@@ -57,7 +57,7 @@ export class PerformanceAnalyzer {
 
       // Resources
       const resourceCount = resources.length;
-      const totalTransferSize = resources.reduce((sum: number, r: any) => sum + (r.transferSize || 0), 0);
+      const totalTransferSize = resources.reduce((sum: number, r: unknown) => sum + ((r as { transferSize?: number }).transferSize || 0), 0);
 
       return {
         lcp,

@@ -215,10 +215,11 @@ describe('PlannerAgent', () => {
       expect(hasLargeFileReport).toBe(true);
     });
 
-    it('should include implementation plan phases', () => {
+    it('should include dynamic implementation plan and code metrics', () => {
       const result = agent.run(makeTask(), '/project');
-      expect(result.output).toContain('Phase 1');
-      expect(result.output).toContain('Phase 2');
+      expect(result.output).toContain('구현 계획');
+      expect(result.output).toContain('코드 메트릭');
+      expect(result.output).toContain('줄/파일 평균');
     });
   });
 

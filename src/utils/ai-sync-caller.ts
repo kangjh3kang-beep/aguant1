@@ -109,7 +109,7 @@ generateCode(config, request).then(r => {
           (e as NodeJS.ErrnoException).code !== 'ENOENT'
         ) {
           if (process.env.AG_DEBUG) {
-            console.debug(`[callAISyncUtil] temp file cleanup failed: ${scriptPath}`);
+            console.debug(`[callAISyncUtil] temp file cleanup failed: ${(e as Error).message}`);
           }
         }
       }

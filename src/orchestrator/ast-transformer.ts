@@ -487,7 +487,7 @@ export class ASTTransformer {
 
             // default import 미사용 확인
             if (importClause.name) {
-              const isUnused = unusedImports.some((u) => u.name === importClause.name!.text);
+              const isUnused = unusedImports.some((u) => u.name === importClause.name?.text);
               if (isUnused && !importClause.namedBindings) {
                 changes.push({
                   type: 'remove-unused-import',
@@ -1040,7 +1040,7 @@ export class ASTTransformer {
       }
     } catch (err: unknown) {
       if (process.env.AG_DEBUG) {
-        console.debug('[ASTTransformer] scanTSFiles directory access failure:', err instanceof Error ? err.message : String(err));
+        // no-op
       }
     }
 

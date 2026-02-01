@@ -25,23 +25,11 @@ export class Orchestrator {
    * 전체 파이프라인을 실행합니다.
    */
   run(): PipelineState {
-    console.log('╔══════════════════════════════════════════════╗');
-    console.log('║   ANTIGRAVITY ORCHESTRATION SYSTEM           ║');
-    console.log('║   Autonomous Coding Team                     ║');
-    console.log('╚══════════════════════════════════════════════╝');
-    console.log('');
-    console.log(`  Project:      ${this.config.project.name}`);
-    console.log(`  Description:  ${this.config.project.description}`);
-    console.log(`  Path:         ${this.config.project.rootPath}`);
-    console.log(`  Tech Stack:   ${this.config.project.techStack.language} ${this.config.project.techStack.framework || ''}`);
-    console.log(`  Requirements: ${this.config.project.requirements.length}`);
-    console.log('');
 
     const engine = new PipelineEngine(this.config.project, this.config.pipeline);
     const state = engine.run();
 
     // 로그 출력
-    console.log(engine.formatLogs());
 
     // 상태 저장
     this.saveState(state);
@@ -58,7 +46,6 @@ export class Orchestrator {
     const engine = new PipelineEngine(this.config.project, pipelineConfig);
     const state = engine.run();
 
-    console.log(engine.formatLogs());
     this.saveState(state);
 
     return state;

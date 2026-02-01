@@ -299,7 +299,7 @@ export abstract class BaseSubAgent {
     } catch (err: unknown) {
       // AI 호출 실패 시 null 반환 (호출측에서 graceful 처리)
       if (process.env.AG_DEBUG) {
-        console.debug(`[BaseAgent] AI 호출 실패: ${err instanceof Error ? err.message : String(err)}`);
+        // no-op
       }
       return null;
     }

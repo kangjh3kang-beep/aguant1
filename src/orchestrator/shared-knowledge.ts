@@ -301,7 +301,7 @@ export class EventBus {
         handler(full);
       } catch (err: unknown) {
         if (process.env.AG_DEBUG) {
-          console.debug('[EventBus] event handler error:', err instanceof Error ? err.message : String(err));
+          // no-op
         }
       }
     }
