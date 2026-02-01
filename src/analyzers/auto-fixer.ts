@@ -50,8 +50,9 @@ export function autoFixLint(projectPath: string, command?: string): FixResult {
         });
       }
     }
-  } catch {
+  } catch (err: unknown) {
     // JSON 파싱 실패시: eslint 성공(exitCode=0)이면 수정 완료로 간주
+    if (process.env.AG_DEBUG) { console.debug('[AutoFixer] ESLint JSON parse error:', err instanceof Error ? err.message : String(err)); }
     if (result.exitCode === 0) {
       fixedCount = 0;
     }

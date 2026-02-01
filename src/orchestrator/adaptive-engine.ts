@@ -947,8 +947,9 @@ class StrategyExecutor {
         const hasError = /error TS\d+/i.test(output);
         outputs.push(`[STRATEGY] 빌드 ${hasError ? '실패' : '성공'}`);
         return { success: !hasError, commands, outputs };
-      } catch {
+      } catch (err: unknown) {
         outputs.push('[STRATEGY] 빌드 명령 실행 실패');
+        if (process.env.AG_DEBUG) { console.debug('[AdaptiveEngine] build exec error:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -967,8 +968,9 @@ class StrategyExecutor {
         const { execSync: exec } = require('child_process');
         exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
         outputs.push('[STRATEGY] eslint --fix 실행 완료');
-      } catch {
+      } catch (err: unknown) {
         outputs.push('[STRATEGY] eslint --fix 실행 실패');
+        if (process.env.AG_DEBUG) { console.debug('[AdaptiveEngine] eslint fix error:', err instanceof Error ? err.message : String(err)); }
       }
 
       // 2. CodeTransformer로 추가 수정 (eslint가 못 고치는 것)
@@ -1005,8 +1007,9 @@ class StrategyExecutor {
         exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
         outputs.push('[STRATEGY] 스냅샷 업데이트 완료');
         return { success: true, commands, outputs };
-      } catch {
+      } catch (err: unknown) {
         outputs.push('[STRATEGY] 스냅샷 업데이트 실패');
+        if (process.env.AG_DEBUG) { console.debug('[AdaptiveEngine] snapshot update error:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -1023,8 +1026,9 @@ class StrategyExecutor {
             exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
             outputs.push(`[STRATEGY] devDependency 설치: ${moduleName}`);
             return { success: true, commands, outputs };
-          } catch {
+          } catch (err: unknown) {
             outputs.push(`[STRATEGY] ${moduleName} 설치 실패`);
+            if (process.env.AG_DEBUG) { console.debug('[AdaptiveEngine] devDep install error:', err instanceof Error ? err.message : String(err)); }
           }
         }
       }
@@ -1048,8 +1052,9 @@ class StrategyExecutor {
       const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
       outputs.push(`[STRATEGY] --legacy-peer-deps 설치 완료: ${output.slice(-200)}`);
       return { success: true, commands, outputs };
-    } catch {
+    } catch (err: unknown) {
       outputs.push('[STRATEGY] 의존성 충돌 해결 실패');
+      if (process.env.AG_DEBUG) { console.debug('[AdaptiveEngine] dep conflict error:', err instanceof Error ? err.message : String(err)); }
     }
 
     return { success: false, commands, outputs };
@@ -1067,8 +1072,9 @@ class StrategyExecutor {
         const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
         outputs.push(`[STRATEGY] npm audit fix 완료: ${output.slice(-200)}`);
         return { success: true, commands, outputs };
-      } catch {
+      } catch (err: unknown) {
         outputs.push('[STRATEGY] npm audit fix 실패');
+        if (process.env.AG_DEBUG) { console.debug('[AdaptiveEngine] npm audit fix error:', err instanceof Error ? err.message : String(err)); }
       }
     }
 
@@ -1109,8 +1115,9 @@ class StrategyExecutor {
       const hasError = /error TS\d+/i.test(output);
       outputs.push(`[STRATEGY] 타입 체크 ${hasError ? '에러 지속' : '통과'}`);
       return { success: !hasError || transformResult.changed > 0, commands, outputs };
-    } catch {
+    } catch (err: unknown) {
       outputs.push('[STRATEGY] 타입 체크 실행 실패');
+      if (process.env.AG_DEBUG) { console.debug('[AdaptiveEngine] type check error:', err instanceof Error ? err.message : String(err)); }
     }
 
     return { success: transformResult.changed > 0, commands, outputs };
