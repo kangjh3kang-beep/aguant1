@@ -114,7 +114,7 @@ describe('init', () => {
     expect(writeFileSync).toHaveBeenCalledTimes(1);
     const configStr = writeFileSync.mock.calls[0][1] as string;
     const config = JSON.parse(configStr.trim());
-    expect(config.stages).toEqual(['compile', 'lint', 'test']);
+    expect(config.stages).toEqual(['compile', 'lint', 'test', 'runtime']);
   });
 
   it('handles write error gracefully', () => {

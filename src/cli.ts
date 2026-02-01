@@ -31,6 +31,7 @@ program
   .option('-c, --compile', '컴파일 검사 실행', false)
   .option('-l, --lint', '린트 검사 실행', false)
   .option('-t, --test', '테스트 실행', false)
+  .option('-r, --runtime', '런타임 헬스체크 실행', false)
   .option('--compile-cmd <cmd>', '커스텀 컴파일 커맨드')
   .option('--lint-cmd <cmd>', '커스텀 린트 커맨드')
   .option('--test-cmd <cmd>', '커스텀 테스트 커맨드')
@@ -53,14 +54,15 @@ program
         process.exit(2);
       }
 
-      const hasSpecific = options.compile || options.lint || options.test;
+      const hasSpecific = options.compile || options.lint || options.test || options.runtime;
       const stages: ReviewStage[] = hasSpecific
         ? [
             ...(options.compile ? ['compile' as ReviewStage] : []),
             ...(options.lint ? ['lint' as ReviewStage] : []),
             ...(options.test ? ['test' as ReviewStage] : []),
+            ...(options.runtime ? ['runtime' as ReviewStage] : []),
           ]
-        : (fileConfig?.stages ?? ['compile', 'lint', 'test']);
+        : (fileConfig?.stages ?? ['compile', 'lint', 'test', 'runtime']);
 
       const agent = new CodeReviewAgent({
         ...(fileConfig ?? {}),

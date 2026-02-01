@@ -2,6 +2,7 @@ import { AgentConfig, ReviewReport, ReviewStage, StageResult, FixReport, DEFAULT
 import { analyzeCompile } from './analyzers/compile-analyzer';
 import { analyzeLint } from './analyzers/lint-analyzer';
 import { analyzeTest } from './analyzers/test-analyzer';
+import { analyzeRuntime } from './analyzers/runtime-analyzer';
 import { autoFixLint, suggestCompileFixes, updateTestSnapshots } from './analyzers/auto-fixer';
 import { generateReport } from './report-generator';
 import { logHeader, logStageStart, logStageResult, logIssue, logSummary } from './utils/logger';
@@ -15,6 +16,7 @@ const STAGE_EXECUTORS: Record<ReviewStage, StageExecutor> = {
   compile: analyzeCompile,
   lint: analyzeLint,
   test: analyzeTest,
+  runtime: analyzeRuntime,
 };
 
 /**
@@ -186,6 +188,7 @@ export class CodeReviewAgent {
       compile: this.config.compileCommand,
       lint: this.config.lintCommand,
       test: this.config.testCommand,
+      runtime: this.config.runtimeCommand,
     };
 
     return executor(this.config.projectPath, commandMap[stage]);

@@ -4,7 +4,7 @@ import { AgentConfig, ReviewStage } from '../types';
 
 const CONFIG_FILENAME = 'ag-review.config.json';
 
-const VALID_STAGES: ReadonlySet<string> = new Set(['compile', 'lint', 'test']);
+const VALID_STAGES: ReadonlySet<string> = new Set(['compile', 'lint', 'test', 'runtime']);
 
 export interface ConfigValidationError {
   field: string;

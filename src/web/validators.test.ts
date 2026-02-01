@@ -11,7 +11,7 @@ describe('validators', () => {
     it('accepts valid body with defaults', () => {
       const result = validateBody(reviewBodySchema, {});
       expect(result).toEqual({
-        data: { stages: ['compile', 'lint', 'test'], autoFix: false },
+        data: { stages: ['compile', 'lint', 'test', 'runtime'], autoFix: false },
       });
     });
 

@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 
-const VALID_STAGES = ['compile', 'lint', 'test'] as const;
+const VALID_STAGES = ['compile', 'lint', 'test', 'runtime'] as const;
 const VALID_PHASES = ['plan', 'code', 'review', 'test', 'security', 'browser', 'deploy'] as const;
 
 // ─── 공통 ───
@@ -21,7 +21,7 @@ export const projectPathSchema = z.string()
 
 export const reviewBodySchema = z.object({
   path: projectPathSchema,
-  stages: z.array(z.enum(VALID_STAGES)).min(1).default(['compile', 'lint', 'test']),
+  stages: z.array(z.enum(VALID_STAGES)).min(1).default(['compile', 'lint', 'test', 'runtime']),
   autoFix: z.boolean().default(false),
 }).strict();
 

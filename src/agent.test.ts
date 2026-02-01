@@ -34,6 +34,16 @@ jest.mock('./analyzers/test-analyzer', () => ({
   }),
 }));
 
+jest.mock('./analyzers/runtime-analyzer', () => ({
+  analyzeRuntime: jest.fn().mockReturnValue({
+    stage: 'runtime',
+    status: 'pass',
+    issues: [],
+    duration: 150,
+    summary: 'Runtime health check passed.',
+  }),
+}));
+
 jest.mock('./analyzers/auto-fixer', () => ({
   autoFixLint: jest.fn().mockReturnValue({
     stage: 'fix',
@@ -111,10 +121,11 @@ describe('CodeReviewAgent', () => {
     const agent = new CodeReviewAgent({ projectPath: '/test' });
     const report = agent.run();
 
-    expect(report.stages).toHaveLength(3);
+    expect(report.stages).toHaveLength(4);
     expect(report.stages[0].stage).toBe('compile');
     expect(report.stages[1].stage).toBe('lint');
     expect(report.stages[2].stage).toBe('test');
+    expect(report.stages[3].stage).toBe('runtime');
     expect(report.passed).toBe(true);
   });
 
@@ -145,10 +156,11 @@ describe('CodeReviewAgent', () => {
     const report = agent.run();
 
     expect(report.passed).toBe(false);
-    expect(report.stages).toHaveLength(3);
+    expect(report.stages).toHaveLength(4);
     expect(report.stages[0].status).toBe('fail');
     expect(report.stages[1].status).toBe('skip');
     expect(report.stages[2].status).toBe('skip');
+    expect(report.stages[3].status).toBe('skip');
   });
 
   it('should return config via getConfig', () => {
@@ -161,7 +173,7 @@ describe('CodeReviewAgent', () => {
 
     expect(config.projectPath).toBe('/test');
     expect(config.verbose).toBe(true);
-    expect(config.stages).toEqual(['compile', 'lint', 'test']);
+    expect(config.stages).toEqual(['compile', 'lint', 'test', 'runtime']);
   });
 
   it('should use custom commands when provided', () => {
@@ -179,7 +191,7 @@ describe('CodeReviewAgent', () => {
     const agent = new CodeReviewAgent({ projectPath: '/test' });
     const report = agent.run();
 
-    expect(report.duration).toBe(600); // 100 + 200 + 300
+    expect(report.duration).toBe(750); // 100 + 200 + 300 + 150
   });
 
   it('should handle stage crash gracefully', () => {

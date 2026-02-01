@@ -80,6 +80,9 @@ function buildConfig(detection: ProjectDetection) {
     config.testCommand = 'npx jest --json --no-coverage';
   }
 
+  // 런타임 헬스체크는 항상 포함 (웹 서버 미감지 시 자동 스킵)
+  stages.push('runtime');
+
   config.stages = stages;
   config.failFast = false;
   config.verbose = true;

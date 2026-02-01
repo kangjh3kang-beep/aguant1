@@ -272,7 +272,7 @@ export function analyzeTrend(projectPath: string): TrendAnalysis {
 
   // 반복 이슈 감지: 3회 이상 연속 fail인 스테이지
   const recurringIssues: string[] = [];
-  const stageNames = ['compile', 'lint', 'test'];
+  const stageNames = ['compile', 'lint', 'test', 'runtime'];
   for (const stageName of stageNames) {
     const failStreak = countRecentFailStreak(entries, stageName);
     if (failStreak >= 3) {

@@ -321,13 +321,13 @@ describe('Web Server (server.ts)', () => {
       expect(constructorCall.projectPath).toBe(DEFAULT_PROJECT);
     });
 
-    it('should default to compile/lint/test stages when none provided', async () => {
+    it('should default to compile/lint/test/runtime stages when none provided', async () => {
       await request(app)
         .post('/api/review')
         .send({});
 
       const constructorCall = (CodeReviewAgent as jest.Mock).mock.calls[0][0];
-      expect(constructorCall.stages).toEqual(['compile', 'lint', 'test']);
+      expect(constructorCall.stages).toEqual(['compile', 'lint', 'test', 'runtime']);
     });
 
     it('should return 500 when agent.run() throws', async () => {

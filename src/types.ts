@@ -3,7 +3,7 @@
  */
 
 export type Severity = 'error' | 'warning' | 'info';
-export type ReviewStage = 'compile' | 'lint' | 'test';
+export type ReviewStage = 'compile' | 'lint' | 'test' | 'runtime';
 export type StageStatus = 'pass' | 'fail' | 'skip' | 'running';
 
 export interface ReviewIssue {
@@ -47,6 +47,7 @@ export interface AgentConfig {
   compileCommand?: string;
   lintCommand?: string;
   testCommand?: string;
+  runtimeCommand?: string;
   failFast?: boolean;
   verbose?: boolean;
   autoFix?: boolean;
@@ -62,7 +63,7 @@ export interface FixReport {
 }
 
 export const DEFAULT_CONFIG: Partial<AgentConfig> = {
-  stages: ['compile', 'lint', 'test'],
+  stages: ['compile', 'lint', 'test', 'runtime'],
   failFast: false,
   verbose: false,
   autoFix: false,

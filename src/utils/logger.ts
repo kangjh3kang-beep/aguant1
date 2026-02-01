@@ -5,6 +5,7 @@ const STAGE_ICONS: Record<ReviewStage, string> = {
   compile: '[COMPILE]',
   lint: '[LINT]',
   test: '[TEST]',
+  runtime: '[RUNTIME]',
 };
 
 const STATUS_LABELS: Record<StageStatus, string> = {
