@@ -84,11 +84,14 @@ export function buildSafeEnv(): Record<string, string> {
 /**
  * 외부 프로세스를 실행하고 결과를 반환합니다.
  * 보안 검증을 수행하며, 실패 시에도 예외를 던지지 않고 결과를 반환합니다.
+ *
+ * @param inheritEnv true이면 환경변수 필터링 없이 전체 상속 (자체 업데이트 등 신뢰 가능한 명령 전용)
  */
 export function runProcess(
   command: string,
   cwd: string,
   timeoutMs = 120_000,
+  inheritEnv = false,
 ): ProcessResult {
   const cmdCheck = validateCommand(command);
   if (!cmdCheck.valid) {
@@ -112,12 +115,16 @@ export function runProcess(
     };
   }
 
+  const env = inheritEnv
+    ? { ...process.env, FORCE_COLOR: '0' } as Record<string, string>
+    : buildSafeEnv();
+
   const options: ExecSyncOptionsWithStringEncoding = {
     cwd,
     encoding: 'utf-8',
     timeout: timeoutMs,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: buildSafeEnv(),
+    env,
     maxBuffer: 10 * 1024 * 1024,
   };
 

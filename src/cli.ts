@@ -393,35 +393,53 @@ program
 
     const agentRoot = path.resolve(__dirname, '..');
 
-    console.log('  [1/3] 최신 코드 가져오는 중...');
+    console.log('  [1/4] 로컬 변경사항 임시 저장...');
+    const stashResult = runProcess('git stash --include-untracked', agentRoot, 10_000, true);
+    const hasStash = stashResult.exitCode === 0 && !stashResult.stdout.includes('No local changes');
+    if (hasStash) {
+      console.log('  로컬 변경사항을 임시 저장했습니다');
+    } else {
+      console.log('  로컬 변경사항 없음');
+    }
+
+    console.log('  [2/4] 최신 코드 가져오는 중...');
     // 현재 브랜치를 자동 감지
-    const branchResult = runProcess('git rev-parse --abbrev-ref HEAD', agentRoot, 10_000);
+    const branchResult = runProcess('git rev-parse --abbrev-ref HEAD', agentRoot, 10_000, true);
     const currentBranch = branchResult.exitCode === 0
       ? branchResult.stdout.trim()
       : 'main';
     console.log(`  현재 브랜치: ${currentBranch}`);
     // 보안: 브랜치명 검증 (커맨드 인젝션 방지)
     const safeBranch = /^[a-zA-Z0-9._\-/]+$/.test(currentBranch) ? currentBranch : 'main';
-    const pullResult = runProcess(`git pull origin ${safeBranch}`, agentRoot, 60_000);
+    const pullResult = runProcess(`git pull origin ${safeBranch}`, agentRoot, 60_000, true);
     if (pullResult.exitCode !== 0) {
-      console.log('  Git pull 실패. 수동 업데이트:');
+      console.log(`  Git pull 실패: ${pullResult.stderr.trim()}`);
+      console.log('  수동 업데이트:');
       console.log(`    cd ${agentRoot}`);
       console.log(`    git pull origin ${currentBranch}`);
       console.log('    npm install && npm run build && npm link');
+      if (hasStash) {
+        runProcess('git stash pop', agentRoot, 10_000, true);
+      }
       process.exit(1);
     }
     console.log('  코드 업데이트 완료');
 
-    console.log('  [2/3] 의존성 업데이트 중...');
-    const installResult = runProcess('npm install', agentRoot, 120_000);
+    if (hasStash) {
+      console.log('  로컬 변경사항 복원 중...');
+      runProcess('git stash pop', agentRoot, 10_000, true);
+    }
+
+    console.log('  [3/4] 의존성 업데이트 중...');
+    const installResult = runProcess('npm install', agentRoot, 120_000, true);
     if (installResult.exitCode !== 0) {
       console.error('  npm install 실패');
       process.exit(1);
     }
     console.log('  의존성 업데이트 완료');
 
-    console.log('  [3/3] 빌드 중...');
-    const buildResult = runProcess('npm run build', agentRoot, 60_000);
+    console.log('  [4/4] 빌드 중...');
+    const buildResult = runProcess('npm run build', agentRoot, 60_000, true);
     if (buildResult.exitCode !== 0) {
       console.error('  빌드 실패');
       process.exit(1);

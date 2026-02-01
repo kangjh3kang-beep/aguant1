@@ -235,29 +235,67 @@ describe('cli', () => {
   });
 
   describe('update command', () => {
+    // Call order: stash → branch → pull → [stash pop if hasStash] → install → build
     it('runs update successfully', () => {
-      _runProcessResults = [pr('main\n'), pr('ok'), pr('ok'), pr('ok')];
+      _runProcessResults = [
+        pr('No local changes to save\n'), // stash (hasStash=false)
+        pr('main\n'),                      // branch
+        pr('ok'),                          // pull
+        pr('ok'),                          // install
+        pr('ok'),                          // build
+      ];
+      runCli(['update']);
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('업데이트가 완료'));
+    });
+
+    it('runs update with stash successfully', () => {
+      _runProcessResults = [
+        pr('Saved working directory\n'),   // stash (hasStash=true)
+        pr('main\n'),                      // branch
+        pr('ok'),                          // pull
+        pr('ok'),                          // stash pop
+        pr('ok'),                          // install
+        pr('ok'),                          // build
+      ];
       runCli(['update']);
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('업데이트가 완료'));
     });
 
     it('handles git pull failure', () => {
       // process.exit is mocked (no-op), so execution continues — provide enough results
-      _runProcessResults = [pr('main\n'), prErr('error'), pr('ok'), pr('ok')];
+      _runProcessResults = [
+        pr('No local changes to save\n'), // stash
+        pr('main\n'),                      // branch
+        prErr('error'),                    // pull (fail)
+        pr('ok'),                          // install (continues because exit is mocked)
+        pr('ok'),                          // build
+      ];
       runCli(['update']);
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Git pull 실패'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it('handles npm install failure', () => {
-      _runProcessResults = [pr('main\n'), pr('ok'), prErr('err'), pr('ok')];
+      _runProcessResults = [
+        pr('No local changes to save\n'), // stash
+        pr('main\n'),                      // branch
+        pr('ok'),                          // pull
+        prErr('err'),                      // install (fail)
+        pr('ok'),                          // build (continues because exit is mocked)
+      ];
       runCli(['update']);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('npm install 실패'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it('handles build failure', () => {
-      _runProcessResults = [pr('main\n'), pr('ok'), pr('ok'), prErr('err')];
+      _runProcessResults = [
+        pr('No local changes to save\n'), // stash
+        pr('main\n'),                      // branch
+        pr('ok'),                          // pull
+        pr('ok'),                          // install
+        prErr('err'),                      // build (fail)
+      ];
       runCli(['update']);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('빌드 실패'));
       expect(exitSpy).toHaveBeenCalledWith(1);
