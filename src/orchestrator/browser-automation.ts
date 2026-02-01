@@ -22,12 +22,12 @@ import { execSync, ChildProcess, spawn } from 'child_process';
 import { BrowserConfig, TaskIssue, DEFAULT_BROWSER_CONFIG } from './types';
 
 // ─── 브라우저 컨텍스트 타입 선언 ──────────────────────────────
-// page.evaluate() 콜백은 Puppeteer가 브라우저에서 실행합니다.
-// Node.js tsconfig에는 DOM 타입이 없으므로 최소 선언을 추가합니다.
-/* eslint-disable no-var */
-declare var document: any;
-declare var window: any;
-/* eslint-enable no-var */
+// page.evaluate() 콜백은 Puppeteer가 브라우저 컨텍스트에서 실행합니다.
+// Node.js tsconfig에는 DOM 타입이 없으므로 Record 기반 선언을 사용합니다.
+/* eslint-disable no-var, @typescript-eslint/no-explicit-any */
+declare var document: Record<string, any>;
+declare var window: Record<string, any>;
+/* eslint-enable no-var, @typescript-eslint/no-explicit-any */
 
 // ─── 타입 정의 ─────────────────────────────────────────────
 
@@ -162,13 +162,43 @@ export const DEFAULT_AUTOMATION_CONFIG: BrowserAutomationConfig = {
 };
 
 // ─── Puppeteer 동적 로드 ────────────────────────────────────
-// Puppeteer는 선택적 의존성이므로 타입을 any로 처리합니다.
+// Puppeteer는 선택적 의존성이므로 최소 인터페이스로 타입을 정의합니다.
 // 실제 런타임에서 dynamic require()로 로드합니다.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type PuppeteerModule = any;
-type PuppeteerBrowser = any;
-type PuppeteerPage = any;
+interface PuppeteerPage {
+  goto(url: string, opts?: Record<string, unknown>): Promise<unknown>;
+  screenshot(opts?: Record<string, unknown>): Promise<Buffer>;
+  evaluate<T>(fn: (...args: any[]) => T, ...args: any[]): Promise<T>;
+  setViewport(viewport: { width: number; height: number }): Promise<void>;
+  close(): Promise<void>;
+  on(event: string, handler: (...args: any[]) => void): void;
+  url(): string;
+  title(): Promise<string>;
+  waitForSelector(selector: string, opts?: Record<string, unknown>): Promise<unknown>;
+  click(selector: string, opts?: Record<string, unknown>): Promise<void>;
+  type(selector: string, text: string): Promise<void>;
+  select(selector: string, ...values: string[]): Promise<string[]>;
+  waitForNavigation(opts?: Record<string, unknown>): Promise<unknown>;
+  content(): Promise<string>;
+  $eval(selector: string, fn: (el: any) => any): Promise<any>;
+  $$eval(selector: string, fn: (els: any[]) => any): Promise<any>;
+  hover(selector: string): Promise<void>;
+  keyboard: { press(key: string): Promise<void> };
+  setUserAgent(ua: string): Promise<void>;
+}
+
+interface PuppeteerBrowser {
+  newPage(): Promise<PuppeteerPage>;
+  close(): Promise<void>;
+  pages(): Promise<PuppeteerPage[]>;
+  isConnected(): boolean;
+}
+
+interface PuppeteerModule {
+  launch(opts?: Record<string, unknown>): Promise<PuppeteerBrowser>;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function loadPuppeteer(): PuppeteerModule | null {
   try {
