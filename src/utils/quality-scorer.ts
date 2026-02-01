@@ -1,11 +1,15 @@
 /**
  * Quality Scorer — 6개 카테고리 기반 프로젝트 품질 점수 계산
+ *
+ * 성능 최적화: 최근 리뷰 히스토리를 우선 활용하여
+ * 매번 tsc/eslint/jest를 실행하지 않습니다.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { CodeReviewAgent } from '../agent';
 import { loadConfig } from './config-loader';
+import { loadHistory } from './review-history';
 
 export interface CategoryScore {
   name: string;
@@ -21,23 +25,52 @@ export interface QualityScoreResult {
   grade: string;
   categories: CategoryScore[];
   timestamp: string;
+  source: 'live' | 'history' | 'provided';
+}
+
+interface ReviewReport {
+  stages: Array<{
+    stage: string;
+    status: string;
+    issues: Array<{ severity: string; message: string; file?: string; rule?: string }>;
+    duration: number;
+  }>;
 }
 
 /**
  * 리뷰 리포트를 기반으로 6개 카테고리 품질 점수를 계산합니다.
+ *
+ * @param projectPath 프로젝트 경로
+ * @param existingReport 이미 실행된 리뷰 리포트 (있으면 재사용하여 빠름)
  */
-export function computeQualityScore(projectPath: string): QualityScoreResult {
-  const { config: fileConfig } = loadConfig(projectPath);
-  const agent = new CodeReviewAgent({
-    ...(fileConfig ?? {}),
-    projectPath,
-    stages: ['compile', 'lint', 'test'],
-    verbose: false,
-    autoFix: false,
-    failFast: false,
-  });
+export function computeQualityScore(projectPath: string, existingReport?: ReviewReport): QualityScoreResult {
+  let report: ReviewReport;
+  let source: 'live' | 'history' | 'provided' = 'live';
 
-  const report = agent.run();
+  if (existingReport) {
+    // 기존 리포트 제공됨 — 즉시 사용
+    report = existingReport;
+    source = 'provided';
+  } else {
+    // 최근 히스토리에서 리포트 로드 시도 (빠름: 파일 읽기만)
+    const historyReport = loadReportFromHistory(projectPath);
+    if (historyReport) {
+      report = historyReport;
+      source = 'history';
+    } else {
+      // 히스토리 없음 — 실제 에이전트 실행 (느림)
+      const { config: fileConfig } = loadConfig(projectPath);
+      const agent = new CodeReviewAgent({
+        ...(fileConfig ?? {}),
+        projectPath,
+        stages: ['compile', 'lint', 'test'],
+        verbose: false,
+        autoFix: false,
+        failFast: false,
+      });
+      report = agent.run();
+    }
+  }
 
   const compileStage = report.stages.find(s => s.stage === 'compile');
   const lintStage = report.stages.find(s => s.stage === 'lint');
@@ -71,7 +104,39 @@ export function computeQualityScore(projectPath: string): QualityScoreResult {
     grade: getGrade(total, maxTotal),
     categories,
     timestamp: new Date().toISOString(),
+    source,
   };
+}
+
+/**
+ * 최근 리뷰 히스토리에서 리포트를 로드합니다.
+ * 10분 이내의 결과만 유효합니다.
+ */
+function loadReportFromHistory(projectPath: string): ReviewReport | null {
+  try {
+    const history = loadHistory(projectPath);
+    if (history.entries.length === 0) return null;
+
+    const latest = history.entries[history.entries.length - 1];
+
+    // 10분 이내의 결과만 사용
+    const age = Date.now() - new Date(latest.timestamp).getTime();
+    const TEN_MINUTES = 10 * 60 * 1000;
+    if (age > TEN_MINUTES) return null;
+
+    // 히스토리 엔트리를 ReviewReport 형태로 변환
+    // HistoryEntry.stages는 배열 형태: Array<{ stage, status, issueCount, duration }>
+    const stages = latest.stages.map((s) => ({
+      stage: s.stage,
+      status: s.status,
+      issues: [] as Array<{ severity: string; message: string; file?: string; rule?: string }>,
+      duration: s.duration,
+    }));
+
+    return { stages };
+  } catch (_err: unknown) {
+    return null;
+  }
 }
 
 interface StageResult {

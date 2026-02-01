@@ -50,28 +50,38 @@ export class BrowserAgent extends BaseSubAgent {
   }
 
   protected getCapabilities(): string[] {
-    return [
-      // 기존 정적 분석 능력
+    // 항상 사용 가능한 정적 분석 능력
+    const capabilities = [
       'html-semantic-check',
       'color-contrast-estimation',
       'focus-management-check',
-      // Phase 7: 실제 브라우저 자동화 능력
-      'real-browser-automation',
-      'dev-server-management',
-      'screenshot-capture',
-      'visual-regression',
-      'console-error-detection',
-      'responsive-testing',
-      'wcag-2.1-aa-audit',
-      'core-web-vitals-measurement',
+      'wcag-2.1-aa-audit-static',
       'seo-validation',
-      'performance-metrics',
-      'user-flow-execution',
-      'page-interaction',
-      'auto-link-discovery',
-      'dom-a11y-audit',
-      'cloud-browser-integration',
     ];
+
+    // Puppeteer 설치 시에만 실제 브라우저 자동화 능력 보고
+    if (this.checkPuppeteerRuntime()) {
+      capabilities.push(
+        'real-browser-automation',
+        'dev-server-management',
+        'screenshot-capture',
+        'visual-regression',
+        'console-error-detection',
+        'responsive-testing',
+        'core-web-vitals-measurement',
+        'performance-metrics',
+        'user-flow-execution',
+        'page-interaction',
+        'auto-link-discovery',
+        'dom-a11y-audit',
+      );
+    }
+
+    if (this.browserConfig?.cloudBrowser?.enabled) {
+      capabilities.push('cloud-browser-integration');
+    }
+
+    return capabilities;
   }
 
   protected executeTask(task: Task, projectPath: string): TaskResult {
@@ -102,8 +112,16 @@ export class BrowserAgent extends BaseSubAgent {
     this.ensureDir(screenshotDir);
     outputs.push(`[BROWSER] Screenshots: ${screenshotDir}`);
 
-    // ═══ Phase 7: 실제 브라우저 자동화 시도 ═══
+    // ═══ 실행 모드 판별 ═══
     const puppeteerAvailable = this.checkPuppeteerRuntime();
+
+    if (!puppeteerAvailable) {
+      outputs.push('[BROWSER] ⚠ Puppeteer 미설치 — 정적 분석 모드로 실행합니다');
+      outputs.push('[BROWSER] 정적 분석: HTML 구조, WCAG 접근성, SEO 패턴을 파일 기반으로 검사합니다');
+      outputs.push('[BROWSER] 실제 브라우저 렌더링/상호작용 테스트는 수행되지 않습니다');
+      outputs.push('[BROWSER] 브라우저 자동화 활성화: npm install puppeteer --save-dev');
+      outputs.push('');
+    }
 
     if (puppeteerAvailable) {
       outputs.push('');
@@ -363,12 +381,6 @@ main().catch(err => {
       outputs.push(...result.logs);
       issues.push(...result.issues);
       artifacts.push(...result.artifacts);
-    } else {
-      // Puppeteer 없이 기본 검증
-      outputs.push('[BROWSER] Puppeteer not installed — running static analysis mode');
-      outputs.push('[BROWSER] To enable real browser testing:');
-      outputs.push('  npm install puppeteer --save-dev');
-      outputs.push('');
     }
 
     // 기본 HTML 검증

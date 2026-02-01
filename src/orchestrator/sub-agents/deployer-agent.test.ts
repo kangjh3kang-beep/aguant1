@@ -355,7 +355,7 @@ describe('DeployerAgent', () => {
       expect(result.artifacts.length).toBeGreaterThan(0);
     });
 
-    it('should handle Docker not installed gracefully', () => {
+    it('should fail when Docker is not installed but Dockerfile exists', () => {
       mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const s = String(p);
         if (s.endsWith('Dockerfile')) return true;
@@ -373,9 +373,10 @@ describe('DeployerAgent', () => {
 
       const result = agent.run(makeTask(), projectPath);
 
-      // Docker not found is treated as a warning, deploy still succeeds
-      expect(result.success).toBe(true);
+      // Docker not found with Dockerfile present is a deployment failure
+      expect(result.success).toBe(false);
       expect(result.output).toContain('Docker not available');
+      expect(result.issues.some((i) => i.severity === 'error')).toBe(true);
     });
 
     it('should fail when Docker build fails with a real error', () => {
@@ -468,7 +469,7 @@ describe('DeployerAgent', () => {
       expect(result.output).toContain('Vercel');
     });
 
-    it('should handle Vercel CLI not available', () => {
+    it('should fail when Vercel CLI is not available but vercel.json exists', () => {
       mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const s = String(p);
         if (s.endsWith('vercel.json')) return true;
@@ -480,9 +481,10 @@ describe('DeployerAgent', () => {
 
       const result = agent.run(makeTask(), projectPath);
 
-      // Vercel failure is non-fatal
-      expect(result.success).toBe(true);
+      // Vercel target detected but CLI not available is a deployment failure
+      expect(result.success).toBe(false);
       expect(result.output).toContain('Vercel CLI not available');
+      expect(result.issues.some((i) => i.severity === 'error')).toBe(true);
     });
   });
 

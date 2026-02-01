@@ -115,12 +115,30 @@ describe('BrowserAgent', () => {
       expect(info.role).toBe('browser');
     });
 
-    it('should have browser-related capabilities', () => {
+    it('should have static analysis capabilities when puppeteer is not available', () => {
+      checkPuppeteerSpy.mockReturnValue(false);
       const info = agent.getInfo();
       expect(info.capabilities).toContain('html-semantic-check');
+      expect(info.capabilities).toContain('seo-validation');
+      expect(info.capabilities).toContain('wcag-2.1-aa-audit-static');
+      // Puppeteer 미설치 시 브라우저 자동화 능력은 보고하지 않음
+      expect(info.capabilities).not.toContain('real-browser-automation');
+      expect(info.capabilities).not.toContain('screenshot-capture');
+    });
+
+    it('should include browser automation capabilities when puppeteer is available', () => {
+      // capabilities는 생성자에서 캐시되므로 spy를 먼저 설정하고 새 에이전트 생성
+      const protoSpy = jest.spyOn(
+        BrowserAgent.prototype as unknown as { checkPuppeteerRuntime: () => boolean },
+        'checkPuppeteerRuntime',
+      ).mockReturnValue(true);
+      const freshAgent = new BrowserAgent(createBrowserConfig());
+      const info = freshAgent.getInfo();
+      expect(info.capabilities).toContain('html-semantic-check');
       expect(info.capabilities).toContain('real-browser-automation');
-      expect(info.capabilities).toContain('wcag-2.1-aa-audit');
       expect(info.capabilities).toContain('screenshot-capture');
+      expect(info.capabilities).toContain('dom-a11y-audit');
+      protoSpy.mockRestore();
     });
   });
 
@@ -136,13 +154,14 @@ describe('BrowserAgent', () => {
       expect(result.output).toContain('Starting browser-based UI verification');
     });
 
-    it('should mention puppeteer installation hint when not installed and not in package.json', () => {
+    it('should mention puppeteer installation hint when not installed', () => {
       checkPuppeteerSpy.mockReturnValue(false);
       mockFs.existsSync.mockReturnValue(false);
 
       const result = agent.run(createTask(), PROJECT_PATH);
 
-      expect(result.output).toContain('Puppeteer not installed');
+      expect(result.output).toContain('Puppeteer 미설치');
+      expect(result.output).toContain('정적 분석 모드');
       expect(result.output).toContain('npm install puppeteer');
     });
 

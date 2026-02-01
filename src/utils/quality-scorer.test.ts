@@ -12,7 +12,14 @@ jest.mock('./config-loader', () => ({
   loadConfig: jest.fn().mockReturnValue({ config: null, errors: [] }),
 }));
 
+jest.mock('./review-history', () => ({
+  loadHistory: jest.fn().mockReturnValue({ entries: [] }),
+}));
+
 import { computeQualityScore } from './quality-scorer';
+import { loadHistory } from './review-history';
+
+const mockLoadHistory = loadHistory as jest.MockedFunction<typeof loadHistory>;
 
 // ─── Helpers ───
 
@@ -91,6 +98,7 @@ describe('quality-scorer', () => {
     expect(result).toHaveProperty('grade');
     expect(result).toHaveProperty('categories');
     expect(result).toHaveProperty('timestamp');
+    expect(result).toHaveProperty('source');
     expect(result.categories).toHaveLength(6);
   });
 
@@ -255,6 +263,59 @@ describe('quality-scorer', () => {
       '보안', '에러핸들링', '타입안전성',
       '테스트커버리지', '코드품질', '아키텍처',
     ]);
+  });
+
+  it('should use provided report when given', () => {
+    const providedReport = {
+      stages: [
+        { stage: 'compile', status: 'pass', issues: [], duration: 50 },
+        { stage: 'lint', status: 'pass', issues: [], duration: 30 },
+        { stage: 'test', status: 'pass', issues: [], duration: 100 },
+      ],
+    };
+
+    const result = computeQualityScore(PROJECT_PATH, providedReport);
+    expect(result.source).toBe('provided');
+    // CodeReviewAgent should NOT be called when report is provided
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it('should use history when available and recent', () => {
+    mockLoadHistory.mockReturnValue({
+      projectPath: PROJECT_PATH,
+      lastUpdated: new Date().toISOString(),
+      entries: [{
+        id: 'test-1',
+        timestamp: new Date().toISOString(),
+        passed: true,
+        errorCount: 0,
+        warningCount: 0,
+        totalIssues: 0,
+        duration: 180,
+        stages: [
+          { stage: 'compile', status: 'pass', issueCount: 0, duration: 50 },
+          { stage: 'lint', status: 'pass', issueCount: 0, duration: 30 },
+          { stage: 'test', status: 'pass', issueCount: 0, duration: 100 },
+        ],
+      }],
+    });
+
+    const result = computeQualityScore(PROJECT_PATH);
+    expect(result.source).toBe('history');
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to live run when no history', () => {
+    // 이전 테스트에서 설정한 history mock을 초기화
+    mockLoadHistory.mockReturnValue({
+      projectPath: PROJECT_PATH,
+      lastUpdated: new Date().toISOString(),
+      entries: [],
+    });
+
+    const result = computeQualityScore(PROJECT_PATH);
+    expect(result.source).toBe('live');
+    expect(mockRun).toHaveBeenCalled();
   });
 
   it('should handle missing src directory for architecture', () => {

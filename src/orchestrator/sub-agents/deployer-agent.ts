@@ -242,9 +242,9 @@ export class DeployerAgent extends BaseSubAgent {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes('not found') || errMsg.includes('command not found')) {
-        issues.push(this.createIssue('warning', 'Docker not installed or not running'));
-        logs.push('[DEPLOYER] Docker not available - skipping Docker build');
-        return { success: true, logs, issues, artifacts };
+        issues.push(this.createIssue('error', 'Docker not installed or not running — Dockerfile exists but cannot build'));
+        logs.push('[DEPLOYER] Docker not available — deployment target detected but cannot execute');
+        return { success: false, logs, issues, artifacts };
       }
       issues.push(this.createIssue('error', `Docker build failed: ${errMsg.slice(0, 200)}`));
       return { success: false, logs, issues, artifacts };
@@ -271,9 +271,9 @@ export class DeployerAgent extends BaseSubAgent {
       return { success: true, logs, issues, artifacts };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      issues.push(this.createIssue('warning', `Vercel deploy: ${errMsg.slice(0, 200)}`));
-      logs.push('[DEPLOYER] Vercel CLI not available or not authenticated');
-      return { success: true, logs, issues, artifacts };
+      issues.push(this.createIssue('error', `Vercel deploy failed: ${errMsg.slice(0, 200)}`));
+      logs.push('[DEPLOYER] Vercel CLI not available or not authenticated — deployment target detected but cannot execute');
+      return { success: false, logs, issues, artifacts };
     }
   }
 
