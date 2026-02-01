@@ -17,6 +17,7 @@ import { execSync } from 'child_process';
 jest.mock('fs');
 jest.mock('child_process');
 jest.mock('../ai-provider');
+jest.mock('../../utils/ai-sync-caller');
 jest.mock('../prompt-enhancer', () => ({
   PromptEnhancer: jest.fn().mockImplementation(() => ({
     enhance: jest.fn().mockReturnValue({
@@ -55,8 +56,10 @@ import { CoderAgent } from './coder-agent';
 import { SubAgentConfig, Task, TaskResult } from '../types';
 import { autoDetectProvider, generateCode } from '../ai-provider';
 import { CodeGenV2, DEFAULT_CODEGEN_V2_CONFIG } from '../code-gen-v2';
+import { callAISyncUtil } from '../../utils/ai-sync-caller';
 
 const mockAutoDetect = autoDetectProvider as jest.MockedFunction<typeof autoDetectProvider>;
+const mockCallAISyncUtil = callAISyncUtil as jest.MockedFunction<typeof callAISyncUtil>;
 
 // CodeGenV2 mock setup
 const mockValidateAndScore = jest.fn();
@@ -133,6 +136,9 @@ describe('CoderAgent', () => {
 
     // No AI provider by default
     mockAutoDetect.mockReturnValue(null);
+
+    // callAISyncUtil returns null by default (no AI available)
+    mockCallAISyncUtil.mockReturnValue(null);
 
     // fs defaults
     mockFs.existsSync.mockReturnValue(false);
@@ -255,17 +261,8 @@ describe('CoderAgent', () => {
     });
 
     it('should attempt AI code generation when provider is available', () => {
-      // AI call will fail (execSync for temp script)
+      mockCallAISyncUtil.mockReturnValue('export function hello() { return "world"; }');
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: 'export function hello() { return "world"; }',
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-            tokensUsed: 100,
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) {
           return 'feature/test';
         }
@@ -279,58 +276,41 @@ describe('CoderAgent', () => {
     });
 
     it('should handle AI call failure gracefully', () => {
+      mockCallAISyncUtil.mockReturnValue(null);
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          throw new Error('API request timeout');
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
 
       const result = agent.run(createTask(), PROJECT_PATH);
 
-      expect(result.output).toContain('AI call failed');
-      expect(result.issues.some((i) => i.message.includes('AI generation failed'))).toBe(true);
+      expect(result.output).toContain('No response from AI');
+      expect(result.issues.some((i) => i.message.includes('AI generation returned no response'))).toBe(true);
     });
 
     it('should handle AI error response', () => {
+      // callAISyncUtil returns null when the AI provider returns an error
+      mockCallAISyncUtil.mockReturnValue(null);
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: false,
-            code: '',
-            error: 'Rate limit exceeded',
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
 
       const result = agent.run(createTask(), PROJECT_PATH);
 
-      expect(result.output).toContain('AI error: Rate limit exceeded');
+      expect(result.output).toContain('No response from AI');
     });
 
-    it('should report tokens used on success', () => {
+    it('should report AI response received on success', () => {
+      mockCallAISyncUtil.mockReturnValue('export const x = 1;');
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: 'export const x = 1;',
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-            tokensUsed: 256,
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
 
       const result = agent.run(createTask(), PROJECT_PATH);
 
-      expect(result.output).toContain('Tokens used: 256');
+      expect(result.output).toContain('AI response received');
     });
   });
 
@@ -351,24 +331,10 @@ export function authenticate() { return true; }
 import { authenticate } from './auth';
 test('should auth', () => { expect(authenticate()).toBe(true); });`;
 
+      mockCallAISyncUtil.mockReturnValue(generatedCode);
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: generatedCode,
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
-      });
-
-      // Make path.resolve work correctly for security check
-      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
-        const s = String(p);
-        if (s.includes('_ai_gen.js')) return true;
-        return false;
       });
 
       const result = agent.run(createTask(), PROJECT_PATH);
@@ -381,15 +347,8 @@ test('should auth', () => { expect(authenticate()).toBe(true); });`;
     it('should save single file to generated dir when no FILE: markers exist', () => {
       const generatedCode = 'export function hello() { return "world"; }';
 
+      mockCallAISyncUtil.mockReturnValue(generatedCode);
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: generatedCode,
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
@@ -418,15 +377,8 @@ root:x:0:0:root:/root:/bin/bash
 // FILE: src/safe-file.ts
 export const safe = true;`;
 
+      mockCallAISyncUtil.mockReturnValue(maliciousCode);
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: maliciousCode,
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
@@ -446,15 +398,8 @@ secret
 // FILE: src/ok.ts
 export const ok = 1;`;
 
+      mockCallAISyncUtil.mockReturnValue(maliciousCode);
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: maliciousCode,
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
@@ -475,15 +420,8 @@ export const ok = 1;`;
     });
 
     it('should run CodeGenV2 validation on generated artifacts', () => {
+      mockCallAISyncUtil.mockReturnValue('// FILE: src/module.ts\nexport function test() { return 1; }');
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: '// FILE: src/module.ts\nexport function test() { return 1; }',
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
@@ -514,15 +452,8 @@ export const ok = 1;`;
     });
 
     it('should report quality gate failure', () => {
+      mockCallAISyncUtil.mockReturnValue('// FILE: src/bad.ts\nfunction x() {}');
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: '// FILE: src/bad.ts\nfunction x() {}',
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
@@ -670,43 +601,26 @@ export const ok = 1;`;
   describe('temp file cleanup', () => {
     const mockAIConfig = { provider: 'claude' as const, apiKey: 'test-key', model: 'claude-sonnet-4-20250514', maxTokens: 8192 };
 
-    it('should clean up temp AI script after execution', () => {
+    it('should delegate AI calls to callAISyncUtil', () => {
       mockAutoDetect.mockReturnValue(mockAIConfig);
+      mockCallAISyncUtil.mockReturnValue('export const x = 1;');
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: 'export const x = 1;',
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
       });
 
       agent.run(createTask(), PROJECT_PATH);
 
-      // Should attempt to unlink the temp script
-      expect(mockFs.unlinkSync).toHaveBeenCalled();
+      // callAISyncUtil should have been called (it handles temp file lifecycle internally)
+      expect(mockCallAISyncUtil).toHaveBeenCalled();
     });
 
-    it('should handle cleanup failure without crashing', () => {
+    it('should handle callAISyncUtil returning null without crashing', () => {
       mockAutoDetect.mockReturnValue(mockAIConfig);
+      mockCallAISyncUtil.mockReturnValue(null);
       mockExecSync.mockImplementation((cmd: string) => {
-        if (typeof cmd === 'string' && cmd.includes('_ai_gen.js')) {
-          return JSON.stringify({
-            success: true,
-            code: 'export const x = 1;',
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-          });
-        }
         if (typeof cmd === 'string' && cmd.includes('git')) return 'main';
         return '';
-      });
-      mockFs.unlinkSync.mockImplementation(() => {
-        throw new Error('EACCES: permission denied');
       });
 
       // Should not throw

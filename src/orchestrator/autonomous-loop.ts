@@ -37,6 +37,7 @@ import { PipelineEngine } from './pipeline';
 import { PromptEnhancer } from './prompt-enhancer';
 import { AdaptiveEngine, FixStrategy, FailurePattern } from './adaptive-engine';
 import { DirectFeedbackPipeline, PipelineResult as DirectPatchResult } from './direct-feedback-pipeline';
+import { callAISyncUtil } from '../utils/ai-sync-caller';
 import { CodeTransformer } from './code-transformer';
 import { LearningMemory } from './learning-memory';
 
@@ -1307,7 +1308,7 @@ export class AutonomousLoop {
     qualityScore: number,
   ): { verdict: string; score: number; feedback: string } | null {
     try {
-      const { autoDetectProvider, generateCode } = require('./ai-provider');
+      const { autoDetectProvider } = require('./ai-provider');
       const aiConfig = autoDetectProvider();
       if (!aiConfig) return null;
 
@@ -1341,51 +1342,24 @@ ${topIssues || '없음'}
 
 수정 이력: ${this.state.fixHistory.length}건`;
 
-      // 비동기 호출을 동기화 (execSync 기반)
-      const fs = require('fs');
-      const pathMod = require('path');
-      const { execSync: execSyncLocal } = require('child_process');
-      const tmpDir = pathMod.join(require('os').tmpdir(), '.ag-review-ai');
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const scriptPath = pathMod.join(tmpDir, `_judge_${Date.now()}.js`);
-      const providerPath = pathMod.resolve(__dirname, 'ai-provider').replace(/\\/g, '\\\\');
+      // callAISyncUtil로 비동기 호출을 동기화
+      const responseText = callAISyncUtil({
+        aiConfig,
+        systemPrompt,
+        userPrompt,
+        maxTokens: 512,
+        timeout: 30000,
+      });
 
-      // API 키를 환경변수로 전달 (디스크에 평문 기록 방지)
-      const safeConfig = { ...aiConfig, apiKey: undefined };
-      const script = `
-const { generateCode } = require('${providerPath}');
-const config = { ...${JSON.stringify(safeConfig)}, apiKey: process.env._AG_AI_KEY };
-const request = { prompt: ${JSON.stringify(userPrompt)}, systemPrompt: ${JSON.stringify(systemPrompt)}, maxTokens: 512 };
-generateCode(config, request).then(r => {
-  if (r.success) { process.stdout.write(JSON.stringify({ ok: true, text: r.code || '' })); }
-  else { process.stdout.write(JSON.stringify({ ok: false, error: r.error })); }
-}).catch(e => { process.stdout.write(JSON.stringify({ ok: false, error: e.message })); });`;
-
-      fs.writeFileSync(scriptPath, script, { mode: 0o600 });
-      try {
-        const output = execSyncLocal(`node "${scriptPath}"`, {
-          encoding: 'utf-8',
-          timeout: 30000,
-          maxBuffer: 5 * 1024 * 1024,
-          env: { ...process.env, _AG_AI_KEY: aiConfig.apiKey || '' },
-        });
-        const parsed = JSON.parse(output);
-        if (parsed.ok && parsed.text) {
-          const jsonMatch = parsed.text.match(/\{[\s\S]*?\}/);
-          if (jsonMatch) {
-            const judgeResult = JSON.parse(jsonMatch[0]);
-            return {
-              verdict: judgeResult.verdict || 'needs-work',
-              score: judgeResult.score || qualityScore,
-              feedback: judgeResult.feedback || '',
-            };
-          }
-        }
-      } finally {
-        try { fs.unlinkSync(scriptPath); } catch (cleanupErr: unknown) {
-          if (cleanupErr && typeof cleanupErr === 'object' && (cleanupErr as NodeJS.ErrnoException).code !== 'ENOENT') {
-            this.log(`  [AI-JUDGE] 임시 파일 정리 실패: ${scriptPath}`);
-          }
+      if (responseText) {
+        const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+          const judgeResult = JSON.parse(jsonMatch[0]);
+          return {
+            verdict: judgeResult.verdict || 'needs-work',
+            score: judgeResult.score || qualityScore,
+            feedback: judgeResult.feedback || '',
+          };
         }
       }
     } catch (err: unknown) {

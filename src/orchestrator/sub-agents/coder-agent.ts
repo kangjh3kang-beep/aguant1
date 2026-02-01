@@ -18,6 +18,7 @@ import { Task, TaskResult } from '../types';
 import { BaseSubAgent } from './base-agent';
 import { generateCode, autoDetectProvider, AICodeResponse } from '../ai-provider';
 import { CodeGenV2, DEFAULT_CODEGEN_V2_CONFIG, ValidationResult } from '../code-gen-v2';
+import { callAISyncUtil } from '../../utils/ai-sync-caller';
 
 export class CoderAgent extends BaseSubAgent {
   protected getAgentName(): string {
@@ -264,91 +265,29 @@ export class CoderAgent extends BaseSubAgent {
     logs.push(`[CODER] Prompt length: ${prompt.length} chars${promptOverride ? ' (에러 피드백 포함)' : ''}`);
     logs.push(`[CODER] Context: ${context.length} chars from ${fileAnalysis.sourceFiles} source files`);
 
-    // AI API 호출 (async를 sync로 래핑)
-    let response: AICodeResponse | null = null;
-    try {
-      // Node.js에서 async를 sync로 실행
-      const { execSync: execSyncLocal } = require('child_process');
-      const scriptPath = path.join(projectPath, '.ag-review', '_ai_gen.js');
-      const scriptDir = path.dirname(scriptPath);
+    // AI API 호출 (shared utility 사용)
+    const codeText = callAISyncUtil({
+      aiConfig,
+      systemPrompt: '',
+      userPrompt: prompt,
+      maxTokens: aiConfig.maxTokens || 8192,
+    });
 
-      if (!fs.existsSync(scriptDir)) {
-        fs.mkdirSync(scriptDir, { recursive: true });
-      }
-
-      // AI 호출 스크립트 생성 및 실행 (API 키는 환경변수로 전달)
-      const safeConfig = { ...aiConfig, apiKey: undefined };
-      const script = `
-const { generateCode } = require('${path.resolve(__dirname, '..', 'ai-provider').replace(/\\/g, '\\\\')}');
-const config = { ...${JSON.stringify(safeConfig)}, apiKey: process.env._AG_AI_KEY };
-const request = {
-  prompt: ${JSON.stringify(prompt)},
-  language: 'typescript',
-  maxTokens: ${safeConfig.maxTokens || 8192},
-};
-generateCode(config, request).then(r => {
-  process.stdout.write(JSON.stringify(r));
-}).catch(e => {
-  process.stdout.write(JSON.stringify({ success: false, code: '', error: e.message, provider: config.provider, model: config.model || 'unknown' }));
-});
-`;
-
-      fs.writeFileSync(scriptPath, script, { mode: 0o600 });
-
-      const output = execSyncLocal(`node "${scriptPath}"`, {
-        encoding: 'utf-8',
-        timeout: 120000,
-        maxBuffer: 10 * 1024 * 1024,
-        cwd: projectPath,
-        env: { ...process.env, _AG_AI_KEY: aiConfig.apiKey || '' },
-      });
-
-      // 임시 스크립트 제거
-      try { fs.unlinkSync(scriptPath); } catch (cleanupErr: unknown) {
-        if (cleanupErr && typeof cleanupErr === 'object' && (cleanupErr as NodeJS.ErrnoException).code !== 'ENOENT') {
-          logs.push(`[CODER] 임시 파일 정리 실패: ${scriptPath}`);
-        }
-      }
-
-      const parsed = JSON.parse(output);
-      if (!parsed || typeof parsed !== 'object') {
-        throw new Error('AI 응답이 올바른 JSON 객체가 아님');
-      }
-      response = parsed;
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      logs.push(`[CODER] AI call failed: ${errMsg.slice(0, 300)}`);
-      issues.push(this.createIssue('warning', `AI generation failed: ${errMsg.slice(0, 200)}`, { autoFixable: false }));
-      return { logs, issues, artifacts };
-    }
-
-    if (!response) {
+    if (!codeText) {
       logs.push('[CODER] No response from AI');
-      return { logs, issues, artifacts };
-    }
-
-    if (!response.success) {
-      logs.push(`[CODER] AI error: ${response.error}`);
-      issues.push(this.createIssue('warning', `AI error: ${response.error}`, { autoFixable: false }));
+      issues.push(this.createIssue('warning', 'AI generation returned no response', { autoFixable: false }));
       return { logs, issues, artifacts };
     }
 
     // 성공
-    logs.push(`[CODER] AI response received (${response.provider}/${response.model})`);
-    if (response.tokensUsed) {
-      logs.push(`[CODER] Tokens used: ${response.tokensUsed}`);
-    }
+    logs.push(`[CODER] AI response received (${aiConfig.provider}/${aiConfig.model || 'default'})`);
 
     // 생성된 코드를 파일로 저장
-    const savedFiles = this.saveGeneratedCode(projectPath, task, response.code, logs);
+    const savedFiles = this.saveGeneratedCode(projectPath, task, codeText, logs);
     logs.push(`[CODER] Generated ${savedFiles.length} file(s):`);
     for (const file of savedFiles) {
       logs.push(`  → ${file}`);
       artifacts.push(file);
-    }
-
-    if (response.explanation) {
-      logs.push(`[CODER] AI explanation: ${response.explanation.slice(0, 300)}`);
     }
 
     return { logs, issues, artifacts };

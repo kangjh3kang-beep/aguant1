@@ -16,6 +16,7 @@ import path from 'path';
 import { Task, TaskResult, TaskIssue, SubAgentConfig, SubAgentInfo, AgentRole, AgentStatus } from '../types';
 import { PromptEnhancer, EnhancedPrompt } from '../prompt-enhancer';
 import { SharedKnowledgeBase, EventBus, ContextChain, InsightCategory, InsightSeverity } from '../shared-knowledge';
+import { callAISyncUtil } from '../../utils/ai-sync-caller';
 
 export abstract class BaseSubAgent {
   protected config: SubAgentConfig;
@@ -289,54 +290,13 @@ export abstract class BaseSubAgent {
       const aiConfig = this.config.aiProvider || autoDetectProvider();
       if (!aiConfig) return null;
 
-      const { execSync: execSyncLocal } = require('child_process');
-      const tmpDir = path.join(require('os').tmpdir(), '.ag-review-ai');
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-      const scriptPath = path.join(tmpDir, `_ai_${this.info.id}_${Date.now()}.js`);
-      const providerPath = path.resolve(__dirname, '..', 'ai-provider').replace(/\\/g, '\\\\');
-
-      // API 키를 환경변수로 전달 (디스크에 평문 기록 방지)
-      const safeConfig = { ...aiConfig, apiKey: undefined };
-      const script = `
-const { generateCode } = require('${providerPath}');
-const config = { ...${JSON.stringify(safeConfig)}, apiKey: process.env._AG_AI_KEY };
-const request = {
-  prompt: ${JSON.stringify(userPrompt)},
-  systemPrompt: ${JSON.stringify(systemPrompt)},
-  maxTokens: ${opts?.maxTokens || 4096},
-};
-generateCode(config, request).then(r => {
-  if (r.success) {
-    process.stdout.write(JSON.stringify({ ok: true, text: r.code || '' }));
-  } else {
-    process.stdout.write(JSON.stringify({ ok: false, error: r.error }));
-  }
-}).catch(e => {
-  process.stdout.write(JSON.stringify({ ok: false, error: e.message }));
-});
-`;
-
-      fs.writeFileSync(scriptPath, script, { mode: 0o600 });
-      try {
-        const output = execSyncLocal(`node "${scriptPath}"`, {
-          encoding: 'utf-8',
-          timeout: opts?.timeout || 120000,
-          maxBuffer: 10 * 1024 * 1024,
-          env: { ...process.env, _AG_AI_KEY: aiConfig.apiKey || '' },
-        });
-        const result = JSON.parse(output);
-        if (result && typeof result === 'object' && result.ok) {
-          return result.text || null;
-        }
-        return null;
-      } finally {
-        try { fs.unlinkSync(scriptPath); } catch (e: unknown) {
-          if (e && typeof e === 'object' && (e as NodeJS.ErrnoException).code !== 'ENOENT') {
-            console.debug(`[BaseAgent] 임시 파일 정리 실패: ${scriptPath}`);
-          }
-        }
-      }
+      return callAISyncUtil({
+        aiConfig,
+        systemPrompt,
+        userPrompt,
+        maxTokens: opts?.maxTokens,
+        timeout: opts?.timeout,
+      });
     } catch (err: unknown) {
       // AI 호출 실패 시 null 반환 (호출측에서 graceful 처리)
       if (process.env.AG_DEBUG) {
