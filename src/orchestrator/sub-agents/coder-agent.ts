@@ -75,8 +75,9 @@ export class CoderAgent extends BaseSubAgent {
     if (aiConfig) {
       outputs.push(`[CODER] AI Provider: ${aiConfig.provider} (${aiConfig.model || 'default'})`);
     } else {
-      outputs.push('[CODER] No AI provider configured - running in analysis-only mode');
-      outputs.push('[CODER] Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY for AI coding');
+      outputs.push('[CODER] ⚠ AI 프로바이더 미설정 — 코드 생성 불가, 분석 전용 모드로 실행');
+      outputs.push('[CODER] AI 코드 생성 활성화: ANTHROPIC_API_KEY, OPENAI_API_KEY, 또는 GOOGLE_API_KEY 설정');
+      issues.push(this.createIssue('warning', 'AI provider not configured — code generation skipped, analysis-only mode'));
     }
 
     outputs.push(`[CODER] Working on: ${task.title}`);

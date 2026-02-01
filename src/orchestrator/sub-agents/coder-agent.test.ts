@@ -184,8 +184,9 @@ describe('CoderAgent', () => {
 
       const result = agent.run(createTask(), PROJECT_PATH);
 
-      expect(result.output).toContain('No AI provider configured');
-      expect(result.output).toContain('analysis-only mode');
+      expect(result.output).toContain('AI 프로바이더 미설정');
+      expect(result.output).toContain('분석 전용 모드');
+      expect(result.issues.some(i => i.message.includes('code generation skipped'))).toBe(true);
     });
 
     it('should still check environment and analyze files', () => {

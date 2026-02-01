@@ -163,6 +163,7 @@ export class DeployerAgent extends BaseSubAgent {
     }
 
     logs.push('[DEPLOYER] No build system detected, skipping build step');
+    issues.push(this.createIssue('warning', 'No build system found (no npm build script, no Makefile) — build step was skipped'));
     return { success: true, logs, issues };
   }
 

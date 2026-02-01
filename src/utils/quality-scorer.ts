@@ -126,12 +126,16 @@ function loadReportFromHistory(projectPath: string): ReviewReport | null {
 
     // 히스토리 엔트리를 ReviewReport 형태로 변환
     // HistoryEntry.stages는 배열 형태: Array<{ stage, status, issueCount, duration }>
-    const stages = latest.stages.map((s) => ({
-      stage: s.stage,
-      status: s.status,
-      issues: [] as Array<{ severity: string; message: string; file?: string; rule?: string }>,
-      duration: s.duration,
-    }));
+    // 이슈 상세 정보는 히스토리에 저장되지 않으므로, 실패 시 issueCount 기반 합성 이슈 생성
+    const stages = latest.stages.map((s) => {
+      const issues: Array<{ severity: string; message: string; file?: string; rule?: string }> = [];
+      if (s.status === 'fail' && s.issueCount > 0) {
+        for (let i = 0; i < s.issueCount; i++) {
+          issues.push({ severity: 'error', message: `${s.stage} issue #${i + 1} (from history)` });
+        }
+      }
+      return { stage: s.stage, status: s.status, issues, duration: s.duration };
+    });
 
     return { stages };
   } catch (_err: unknown) {
