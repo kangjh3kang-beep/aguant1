@@ -46,7 +46,7 @@ export class PageInteractor {
     try {
       await page.waitForSelector(selector, { timeout: timeout || this.defaultTimeout });
       return true;
-    } catch {
+    } catch (_err: unknown) {
       return false;
     }
   }
@@ -79,7 +79,7 @@ export class PageInteractor {
     try {
       const el = await page.waitForSelector(selector, { visible: true, timeout: 5000 });
       return el !== null;
-    } catch {
+    } catch (_err: unknown) {
       return false;
     }
   }

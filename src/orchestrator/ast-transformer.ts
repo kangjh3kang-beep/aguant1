@@ -240,7 +240,7 @@ export class ASTTransformer {
     let code: string;
     try {
       code = fs.readFileSync(fullPath, 'utf-8');
-    } catch {
+    } catch (_err: unknown) {
       return { issues };
     }
     const sourceFile = ts.createSourceFile(
@@ -994,7 +994,7 @@ export class ASTTransformer {
       }
       // 기본 구조 확인 (빈 파일 X)
       return sf.statements.length > 0 || code.trim().length === 0;
-    } catch {
+    } catch (_err: unknown) {
       return false;
     }
   }

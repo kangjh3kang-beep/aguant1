@@ -202,8 +202,9 @@ export class CodeValidator {
           console.debug('[CodeValidator] temp file cleanup failure:', err instanceof Error ? err.message : String(err));
         }
       }
-    } catch {
+    } catch (err: unknown) {
       warnings.push('TypeScript 검증 환경 설정 실패');
+      if (process.env.AG_DEBUG) { console.debug('[CodeGenV2] TS validation setup error:', err instanceof Error ? err.message : String(err)); }
     }
 
     return {
@@ -439,7 +440,7 @@ export class FallbackChain {
       }
 
       return null;
-    } catch {
+    } catch (_err: unknown) {
       return null;
     }
   }

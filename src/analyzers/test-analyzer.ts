@@ -31,7 +31,7 @@ export function parseTestOutput(output: string): ReviewIssue[] {
   let jestResult: JestJsonOutput;
   try {
     jestResult = JSON.parse(output);
-  } catch {
+  } catch (_err: unknown) {
     return parseTestTextOutput(output);
   }
 
@@ -124,7 +124,7 @@ export function analyzeTest(
     } else {
       throw new Error('Not Jest JSON output');
     }
-  } catch {
+  } catch (_err: unknown) {
     summary =
       status === 'pass'
         ? 'All tests passed.'

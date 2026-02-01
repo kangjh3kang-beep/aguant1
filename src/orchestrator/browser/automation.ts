@@ -429,7 +429,7 @@ export class BrowserAutomation {
 
       await page.close();
       return links.slice(0, 20);
-    } catch {
+    } catch (_err: unknown) {
       try { await page.close(); } catch (err: unknown) { if (process.env.AG_DEBUG) { console.debug('[BrowserAutomation] page close cleanup:', err instanceof Error ? err.message : String(err)); } }
       return [];
     }

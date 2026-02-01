@@ -40,7 +40,7 @@ export class BrowserSession {
 
       this.browser = await this.puppeteer.launch(launchOptions) as PuppeteerBrowser;
       return true;
-    } catch {
+    } catch (_err: unknown) {
       return false;
     }
   }

@@ -82,7 +82,7 @@ generateCode(config, request).then(r => {
     process.stdout.write(JSON.stringify({ ok: false, error: r.error }));
   }
 }).catch(e => {
-  process.stdout.write(JSON.stringify({ ok: false, error: e.message }));
+  process.stdout.write(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }));
 });
 `;
 

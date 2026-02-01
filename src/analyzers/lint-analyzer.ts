@@ -30,7 +30,7 @@ export function parseLintOutput(output: string): ReviewIssue[] {
   let results: EslintFileResult[];
   try {
     results = JSON.parse(output);
-  } catch {
+  } catch (_err: unknown) {
     // JSON 파싱 실패 시 텍스트 기반 파싱으로 폴백
     return parseLintTextOutput(output);
   }

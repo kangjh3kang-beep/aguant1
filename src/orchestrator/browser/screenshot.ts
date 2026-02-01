@@ -81,7 +81,7 @@ export class ScreenshotEngine {
       return fs.readdirSync(this.screenshotDir)
         .filter((f) => /\.(png|jpg|jpeg)$/.test(f))
         .map((f) => path.join(this.screenshotDir, f));
-    } catch {
+    } catch (_err: unknown) {
       return [];
     }
   }

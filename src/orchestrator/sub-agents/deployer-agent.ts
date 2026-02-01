@@ -157,7 +157,7 @@ export class DeployerAgent extends BaseSubAgent {
         execSync('make build', { cwd: projectPath, encoding: 'utf-8', timeout: 300000 });
         logs.push('[DEPLOYER] make build succeeded');
         return { success: true, logs, issues };
-      } catch {
+      } catch (_err: unknown) {
         logs.push('[DEPLOYER] make build not available, skipping');
       }
     }

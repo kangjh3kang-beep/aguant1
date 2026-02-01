@@ -70,7 +70,7 @@ const TEST_ERROR_PATTERNS: ErrorPattern[] = [
           if (!fs.existsSync(stubDir)) fs.mkdirSync(stubDir, { recursive: true });
           fs.writeFileSync(stubPath, `// TODO: Implement module — auto-generated stub\nexport {};\n`, 'utf-8');
           return true;
-        } catch { return false; }
+        } catch (_err: unknown) { return false; }
       }
       return false;
     },
@@ -567,7 +567,7 @@ export class TesterAgent extends BaseSubAgent {
       fs.writeFileSync(testFilePath, testContent, 'utf-8');
 
       return path.relative(projectPath, testFilePath);
-    } catch {
+    } catch (_err: unknown) {
       return null;
     }
   }

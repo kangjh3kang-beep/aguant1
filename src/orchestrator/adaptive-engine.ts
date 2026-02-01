@@ -317,7 +317,7 @@ export class StrategySelector {
     // 2. 패턴 매칭으로 더 정밀한 후보 선별
     const matched = candidates.filter((s) =>
       s.matchPatterns.some((mp) => {
-        try { return new RegExp(mp, 'i').test(pattern.originalMessage); } catch { return false; }
+        try { return new RegExp(mp, 'i').test(pattern.originalMessage); } catch (_err: unknown) { return false; }
       })
     );
 

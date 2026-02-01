@@ -254,11 +254,12 @@ export class CodeReviewAgent {
         }
         console.log('');
       }
-    } catch {
+    } catch (err: unknown) {
       // 학습 실패는 리뷰 결과에 영향을 주지 않음
       if (verbose) {
         console.log('\n[LEARNING] Could not save history (non-critical).\n');
       }
+      if (process.env.AG_DEBUG) { console.debug('[Agent] learning save error:', err instanceof Error ? err.message : String(err)); }
     }
   }
 

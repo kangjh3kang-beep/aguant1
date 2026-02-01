@@ -26,7 +26,7 @@ function detectProject(targetDir: string): ProjectDetection {
   const readPkg = (): Record<string, unknown> => {
     try {
       return JSON.parse(fs.readFileSync(path.join(targetDir, 'package.json'), 'utf-8'));
-    } catch {
+    } catch (_err: unknown) {
       return {};
     }
   };

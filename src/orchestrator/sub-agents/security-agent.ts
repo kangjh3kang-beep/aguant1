@@ -170,7 +170,7 @@ export class SecurityAgent extends BaseSubAgent {
         } catch (err: unknown) {
           logs.push(`[SECURITY] npm audit 파싱 실패: ${err instanceof Error ? err.message : 'JSON 파싱 오류'}`);
         }
-      } catch {
+      } catch (_err: unknown) {
         logs.push('[SECURITY] npm audit not available');
       }
     }

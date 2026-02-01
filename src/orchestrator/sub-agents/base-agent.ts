@@ -313,7 +313,7 @@ export abstract class BaseSubAgent {
     try {
       const { autoDetectProvider } = require('../ai-provider');
       return !!(this.config.aiProvider || autoDetectProvider());
-    } catch {
+    } catch (_err: unknown) {
       return false;
     }
   }

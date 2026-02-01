@@ -195,11 +195,11 @@ export function loadPuppeteer(): PuppeteerModule | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('puppeteer');
-  } catch {
+  } catch (_err: unknown) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       return require('puppeteer-core');
-    } catch {
+    } catch (_err2: unknown) {
       return null;
     }
   }

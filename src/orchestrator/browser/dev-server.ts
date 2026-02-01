@@ -90,7 +90,7 @@ export class DevServerManager {
         if (this.process.pid) {
           try {
             process.kill(-this.process.pid, 'SIGTERM');
-          } catch {
+          } catch (_err: unknown) {
             this.process.kill('SIGTERM');
           }
         }
@@ -145,7 +145,7 @@ export class DevServerManager {
         timeout: 3000,
       });
       return true;
-    } catch {
+    } catch (_err: unknown) {
       return false;
     }
   }
@@ -163,7 +163,7 @@ export class DevServerManager {
           stdio: 'ignore',
         });
         return true;
-      } catch {
+      } catch (_err: unknown) {
         // Wait
         execSync(`sleep ${interval / 1000}`, { timeout: interval + 1000 });
       }

@@ -161,7 +161,7 @@ export class CoderAgent extends BaseSubAgent {
                   [artifact],
                   { qualityScore: result.metrics.qualityScore, complexityScore: result.metrics.complexityScore, attempt },
                 );
-              } catch {
+              } catch (_err: unknown) {
                 outputs.push(`[CODER]   ${artifact}: 검증 스킵 (파일 읽기 실패)`);
               }
             }
@@ -521,7 +521,7 @@ Follow ALL expert coding standards above. Output code only.
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
         logs.push(`[CODER] Project: ${pkg.name || 'unnamed'} v${pkg.version || '0.0.0'}`);
-      } catch {
+      } catch (_err: unknown) {
         issues.push(this.createIssue('warning', 'Could not parse package.json'));
       }
     }
@@ -538,7 +538,7 @@ Follow ALL expert coding standards above. Output code only.
     try {
       const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectPath, encoding: 'utf-8' }).trim();
       logs.push(`[CODER] Current branch: ${branch}`);
-    } catch {
+    } catch (_err: unknown) {
       logs.push('[CODER] Not a git repository or git not available');
     }
     return { logs };
@@ -554,7 +554,7 @@ Follow ALL expert coding standards above. Output code only.
       try {
         execSync('npm install', { cwd: projectPath, timeout: 120000, stdio: 'pipe' });
         logs.push('[CODER] Dependencies installed successfully');
-      } catch {
+      } catch (_err: unknown) {
         issues.push(this.createIssue('error', 'Failed to install dependencies'));
       }
     } else {

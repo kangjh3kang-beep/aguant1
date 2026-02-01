@@ -287,7 +287,7 @@ export class PlannerAgent extends BaseSubAgent {
             }
           }
         }
-      } catch {
+      } catch (_err: unknown) {
         if (depth === 0) issues.push({ severity: 'warning', message: 'Could not read project directory', autoFixable: false });
       }
     };
@@ -347,7 +347,7 @@ export class PlannerAgent extends BaseSubAgent {
         for (const [dep, tech] of depMap) {
           if (allDeps[dep] && !techStack.includes(tech)) techStack.push(tech);
         }
-      } catch {
+      } catch (_err: unknown) {
         issues.push({ severity: 'info', message: 'Could not parse package.json', autoFixable: false });
       }
     }

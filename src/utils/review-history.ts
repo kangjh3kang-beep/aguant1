@@ -77,7 +77,7 @@ export function loadHistory(projectPath: string): ReviewHistory {
       return parsed as ReviewHistory;
     }
     return { projectPath, entries: [], lastUpdated: new Date().toISOString() };
-  } catch {
+  } catch (_err: unknown) {
     return { projectPath, entries: [], lastUpdated: new Date().toISOString() };
   }
 }

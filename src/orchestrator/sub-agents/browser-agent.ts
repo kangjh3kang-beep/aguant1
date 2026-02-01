@@ -389,11 +389,11 @@ main().catch(err => {
     try {
       require.resolve('puppeteer');
       return true;
-    } catch {
+    } catch (_err: unknown) {
       try {
         require.resolve('puppeteer-core');
         return true;
-      } catch {
+      } catch (_err2: unknown) {
         return false;
       }
     }
@@ -447,7 +447,7 @@ main().catch(err => {
       const screenshots = fs.readdirSync(screenshotDir).filter((f) => /\.(png|jpg|jpeg)$/.test(f));
       logs.push(`[BROWSER] Found ${screenshots.length} existing screenshot(s)`);
       artifacts.push(...screenshots.map((s) => path.join(screenshotDir, s)));
-    } catch {
+    } catch (_err: unknown) {
       logs.push('[BROWSER] No existing screenshots');
     }
 

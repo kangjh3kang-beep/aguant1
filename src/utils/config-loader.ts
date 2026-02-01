@@ -46,7 +46,7 @@ export function loadConfig(projectPath: string): {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw);
-  } catch {
+  } catch (_err: unknown) {
     return {
       config: null,
       errors: [{ field: 'file', message: `Invalid JSON in config file: ${configPath}` }],
