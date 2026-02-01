@@ -569,8 +569,8 @@ describe('Web Server (server.ts)', () => {
       const res = await request(app)
         .get('/api/project?path=/home/user/../etc/passwd');
 
-      expect(res.status).toBe(500);
-      expect(res.body.error).toContain('relative path components not allowed');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Validation failed');
     });
 
     it('should reject /etc as a forbidden system directory', async () => {
@@ -672,6 +672,44 @@ describe('Web Server (server.ts)', () => {
 
       expect(res.status).toBe(500);
       expect(res.body.error).toBe('raw string error');
+    });
+  });
+
+  // ═══ Zod validation (400 errors) ════════════════════════════════════════════
+
+  describe('Zod input validation', () => {
+    it('should return 400 for invalid review stages', async () => {
+      const res = await request(app)
+        .post('/api/review')
+        .send({ stages: ['invalid_stage'] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Validation failed');
+    });
+
+    it('should return 400 for invalid orchestrate phases', async () => {
+      const res = await request(app)
+        .post('/api/orchestrate')
+        .send({ phases: ['hack'] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Validation failed');
+    });
+
+    it('should return 400 for history count > 100', async () => {
+      const res = await request(app)
+        .get('/api/history?count=999');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Validation failed');
+    });
+
+    it('should accept valid review body', async () => {
+      const res = await request(app)
+        .post('/api/review')
+        .send({ stages: ['compile', 'lint'], autoFix: false });
+
+      expect(res.status).toBe(200);
     });
   });
 });

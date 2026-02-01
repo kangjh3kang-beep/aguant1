@@ -12,6 +12,11 @@ import { loadHistory, analyzeTrend, formatTrendReport } from '../utils/review-hi
 import { computeQualityScore } from '../utils/quality-scorer';
 import { Orchestrator } from '../orchestrator';
 import { TaskPhase } from '../orchestrator/types';
+import {
+  reviewBodySchema, orchestrateBodySchema,
+  historyQuerySchema, pathQuerySchema,
+  validateBody,
+} from './validators';
 
 /**
  * 사용자 제공 프로젝트 경로를 검증합니다.
@@ -51,7 +56,9 @@ export function createServer(defaultProjectPath?: string): express.Express {
   // ─── 프로젝트 정보 ───
   app.get('/api/project', (req, res) => {
     try {
-      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
+      const parsed = validateBody(pathQuerySchema, req.query);
+      if ('error' in parsed) { res.status(400).json({ error: parsed.error }); return; }
+      const projectPath = validateProjectPath(parsed.data.path, defaultProjectPath || process.cwd());
       const { config } = loadConfig(projectPath);
       const pkgPath = path.join(projectPath, 'package.json');
       let pkg: Record<string, unknown> = {};
@@ -72,9 +79,11 @@ export function createServer(defaultProjectPath?: string): express.Express {
   // ─── 코드리뷰 실행 ───
   app.post('/api/review', (req, res) => {
     try {
-      const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
-      const stages = req.body.stages || ['compile', 'lint', 'test'];
-      const autoFix = req.body.autoFix || false;
+      const parsed = validateBody(reviewBodySchema, req.body);
+      if ('error' in parsed) { res.status(400).json({ error: parsed.error }); return; }
+      const projectPath = validateProjectPath(parsed.data.path, defaultProjectPath || process.cwd());
+      const stages = parsed.data.stages;
+      const autoFix = parsed.data.autoFix;
       const { config: fileConfig } = loadConfig(projectPath);
       const agent = new CodeReviewAgent({
         ...(fileConfig ?? {}),
@@ -110,9 +119,11 @@ export function createServer(defaultProjectPath?: string): express.Express {
   // ─── 오케스트레이션 실행 ───
   app.post('/api/orchestrate', (req, res) => {
     try {
-      const projectPath = validateProjectPath(req.body.path, defaultProjectPath || process.cwd());
-      const phases: TaskPhase[] = req.body.phases || ['plan', 'code', 'review', 'test', 'security', 'browser', 'deploy'];
-      const failFast = req.body.failFast || false;
+      const parsed = validateBody(orchestrateBodySchema, req.body);
+      if ('error' in parsed) { res.status(400).json({ error: parsed.error }); return; }
+      const projectPath = validateProjectPath(parsed.data.path, defaultProjectPath || process.cwd());
+      const phases: TaskPhase[] = parsed.data.phases;
+      const failFast = parsed.data.failFast;
       const orchestrator = Orchestrator.quickStart(projectPath);
       const config = orchestrator.getConfig();
       config.pipeline.phases = phases;
@@ -152,8 +163,10 @@ export function createServer(defaultProjectPath?: string): express.Express {
   // ─── 히스토리 ───
   app.get('/api/history', (req, res) => {
     try {
-      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
-      const count = parseInt(req.query.count as string, 10) || 20;
+      const parsed = validateBody(historyQuerySchema, req.query);
+      if ('error' in parsed) { res.status(400).json({ error: parsed.error }); return; }
+      const projectPath = validateProjectPath(parsed.data.path, defaultProjectPath || process.cwd());
+      const count = parsed.data.count;
       const history = loadHistory(projectPath);
       const entries = history.entries.slice(-count);
       res.json({ total: history.entries.length, entries });
@@ -165,7 +178,9 @@ export function createServer(defaultProjectPath?: string): express.Express {
   // ─── 트렌드 ───
   app.get('/api/trend', (req, res) => {
     try {
-      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
+      const parsed = validateBody(pathQuerySchema, req.query);
+      if ('error' in parsed) { res.status(400).json({ error: parsed.error }); return; }
+      const projectPath = validateProjectPath(parsed.data.path, defaultProjectPath || process.cwd());
       const trend = analyzeTrend(projectPath);
       const text = formatTrendReport(trend);
       res.json({ ...trend, text });
@@ -177,7 +192,9 @@ export function createServer(defaultProjectPath?: string): express.Express {
   // ─── 품질 점수 ───
   app.get('/api/quality-score', (req, res) => {
     try {
-      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
+      const parsed = validateBody(pathQuerySchema, req.query);
+      if ('error' in parsed) { res.status(400).json({ error: parsed.error }); return; }
+      const projectPath = validateProjectPath(parsed.data.path, defaultProjectPath || process.cwd());
       const result = computeQualityScore(projectPath);
       res.json(result);
     } catch (err: unknown) {
