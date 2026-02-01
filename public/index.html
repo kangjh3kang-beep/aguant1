@@ -97,6 +97,22 @@
     .stat-value.red { color: var(--error); }
     .stat-value.blue { color: var(--primary); }
 
+    /* Quality Score */
+    .quality-grid { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: start; }
+    .quality-total { text-align: center; padding: 24px; background: var(--surface2); border-radius: 16px; }
+    .quality-total .score-num { font-size: 56px; font-weight: 800; line-height: 1; }
+    .quality-total .score-max { font-size: 16px; color: var(--text2); }
+    .quality-total .grade { font-size: 32px; font-weight: 800; margin-top: 4px; }
+    .quality-categories { display: flex; flex-direction: column; gap: 12px; }
+    .quality-cat { background: var(--surface2); border-radius: 10px; padding: 14px 18px; }
+    .quality-cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .quality-cat-name { font-weight: 600; font-size: 14px; }
+    .quality-cat-score { font-weight: 700; font-size: 14px; }
+    .quality-cat-bar { height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+    .quality-cat-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+    .quality-cat-details { margin-top: 6px; font-size: 11px; color: var(--text2); }
+    @media (max-width: 640px) { .quality-grid { grid-template-columns: 1fr; } }
+
     /* Empty state */
     .empty { text-align: center; padding: 40px; color: var(--text2); }
 
@@ -131,6 +147,7 @@
     <button class="btn btn-secondary" id="btn-security" onclick="runSecurity()">보안 검사</button>
     <button class="btn btn-secondary" id="btn-history" onclick="loadHistory()">히스토리</button>
     <button class="btn btn-secondary" id="btn-trend" onclick="loadTrend()">트렌드</button>
+    <button class="btn btn-primary" id="btn-quality" onclick="loadQualityScore()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">품질 점수</button>
   </div>
 
   <!-- Summary Stats -->
@@ -529,6 +546,69 @@ async function loadTrend() {
     showPanel('오류', 'ERROR', 'badge-fail', `<div style="color:var(--error)">${escapeHtml(e.message)}</div>`);
   }
   setLoading('btn-trend', false);
+}
+
+// ─── 품질 점수 ───
+async function loadQualityScore() {
+  clearPanels(); resetAgents();
+  setLoading('btn-quality', true);
+  // 리뷰어 에이전트 활성화 (코드리뷰 기반 분석)
+  setAgentState('reviewer', 'active');
+  setAgentState('security', 'active');
+  setAgentState('tester', 'active');
+  try {
+    const res = await fetch(`${API}/api/quality-score${apiQuery()}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    setAgentState('reviewer', 'done');
+    setAgentState('security', 'done');
+    setAgentState('tester', 'done');
+
+    const gradeColor = data.grade === 'S' ? '#fbbf24' : data.total >= 90 ? 'var(--success)' : data.total >= 70 ? 'var(--info)' : 'var(--warn)';
+    const totalColor = data.total >= 90 ? 'var(--success)' : data.total >= 70 ? 'var(--info)' : data.total >= 50 ? 'var(--warn)' : 'var(--error)';
+
+    showStats({
+      status: data.grade, passed: data.total >= 80,
+      tasks: `${data.total}/${data.maxTotal}`, issues: `${data.categories.length}개 카테고리`,
+      duration: new Date(data.timestamp).toLocaleTimeString('ko-KR')
+    });
+
+    const catColors = {
+      security: '#ef4444', errorHandling: '#f59e0b', typeSafety: '#3b82f6',
+      testCoverage: '#10b981', codeQuality: '#8b5cf6', architecture: '#06b6d4'
+    };
+
+    const catsHtml = data.categories.map(function(c) {
+      const pct = Math.round((c.score / c.maxScore) * 100);
+      const color = catColors[c.name] || 'var(--primary)';
+      const detailsHtml = c.details.map(function(d) { return '<div>' + escapeHtml(d) + '</div>'; }).join('');
+      return '<div class="quality-cat">' +
+        '<div class="quality-cat-header">' +
+          '<span class="quality-cat-name">' + c.nameKo + '</span>' +
+          '<span class="quality-cat-score" style="color:' + color + '">' + c.score + '/' + c.maxScore + '</span>' +
+        '</div>' +
+        '<div class="quality-cat-bar"><div class="quality-cat-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+        '<div class="quality-cat-details">' + detailsHtml + '</div>' +
+      '</div>';
+    }).join('');
+
+    const html = '<div class="quality-grid">' +
+      '<div class="quality-total">' +
+        '<div class="score-num" style="color:' + totalColor + '">' + data.total + '</div>' +
+        '<div class="score-max">/ ' + data.maxTotal + '</div>' +
+        '<div class="grade" style="color:' + gradeColor + '">' + data.grade + '</div>' +
+      '</div>' +
+      '<div class="quality-categories">' + catsHtml + '</div>' +
+    '</div>';
+
+    showPanel('품질 점수 분석', data.grade + ' (' + data.total + '/' + data.maxTotal + ')',
+      data.total >= 80 ? 'badge-pass' : 'badge-fail', html);
+  } catch (e) {
+    showPanel('오류', 'ERROR', 'badge-fail', '<div style="color:var(--error)">' + escapeHtml(e.message) + '</div>');
+    resetAgents();
+  }
+  setLoading('btn-quality', false);
 }
 
 // 시작

@@ -29,6 +29,11 @@ jest.mock('../utils/config-loader', () => ({
   loadConfig: jest.fn().mockReturnValue({ config: { stages: ['compile', 'lint'] }, errors: [] }),
 }));
 
+const mockComputeQualityScore = jest.fn();
+jest.mock('../utils/quality-scorer', () => ({
+  computeQualityScore: mockComputeQualityScore,
+}));
+
 const mockLoadHistory = jest.fn();
 const mockAnalyzeTrend = jest.fn();
 const mockFormatTrendReport = jest.fn();
@@ -201,6 +206,21 @@ describe('Web Server (server.ts)', () => {
       },
     });
     mockOrchestratorRun.mockReturnValue(buildMockPipelineState());
+
+    mockComputeQualityScore.mockReturnValue({
+      total: 95,
+      maxTotal: 100,
+      grade: 'S',
+      categories: [
+        { name: 'security', nameKo: '보안', score: 20, maxScore: 20, details: ['보안 이슈 없음'] },
+        { name: 'errorHandling', nameKo: '에러핸들링', score: 20, maxScore: 20, details: ['에러핸들링 이슈 없음'] },
+        { name: 'typeSafety', nameKo: '타입안전성', score: 15, maxScore: 15, details: ['타입 에러 없음'] },
+        { name: 'testCoverage', nameKo: '테스트커버리지', score: 20, maxScore: 20, details: ['전체 테스트 통과'] },
+        { name: 'codeQuality', nameKo: '코드품질', score: 12, maxScore: 15, details: ['린트 경고 5개'] },
+        { name: 'architecture', nameKo: '아키텍처', score: 8, maxScore: 10, details: ['모듈 분리 양호'] },
+      ],
+      timestamp: '2025-01-01T00:00:00.000Z',
+    });
 
     app = createServer(DEFAULT_PROJECT);
   });
@@ -436,6 +456,64 @@ describe('Web Server (server.ts)', () => {
 
       expect(res.status).toBe(500);
       expect(res.body.error).toBe('Trend analysis failure');
+    });
+  });
+
+  // ═══ GET /api/quality-score ═══════════════════════════════════════════════
+
+  describe('GET /api/quality-score', () => {
+    it('should return quality score with all 6 categories', async () => {
+      const res = await request(app).get('/api/quality-score');
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(95);
+      expect(res.body.maxTotal).toBe(100);
+      expect(res.body.grade).toBe('S');
+      expect(res.body.categories).toHaveLength(6);
+      expect(res.body.timestamp).toBeDefined();
+      expect(mockComputeQualityScore).toHaveBeenCalledWith(DEFAULT_PROJECT);
+    });
+
+    it('should include correct category structure', async () => {
+      const res = await request(app).get('/api/quality-score');
+
+      const names = res.body.categories.map((c: { name: string }) => c.name);
+      expect(names).toEqual([
+        'security', 'errorHandling', 'typeSafety',
+        'testCoverage', 'codeQuality', 'architecture',
+      ]);
+
+      const first = res.body.categories[0];
+      expect(first).toHaveProperty('name');
+      expect(first).toHaveProperty('nameKo');
+      expect(first).toHaveProperty('score');
+      expect(first).toHaveProperty('maxScore');
+      expect(first).toHaveProperty('details');
+    });
+
+    it('should accept custom path via query parameter', async () => {
+      const res = await request(app).get('/api/quality-score?path=/home/user/other');
+
+      expect(res.status).toBe(200);
+      expect(mockComputeQualityScore).toHaveBeenCalledWith('/home/user/other');
+    });
+
+    it('should return 500 when computeQualityScore throws', async () => {
+      mockComputeQualityScore.mockImplementation(() => {
+        throw new Error('Quality score computation failed');
+      });
+
+      const res = await request(app).get('/api/quality-score');
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe('Quality score computation failed');
+    });
+
+    it('should reject forbidden paths', async () => {
+      const res = await request(app).get('/api/quality-score?path=/etc');
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('system directory access denied');
     });
   });
 

@@ -9,6 +9,7 @@ import { CodeReviewAgent } from '../agent';
 import { formatReportAsText } from '../report-generator';
 import { loadConfig } from '../utils/config-loader';
 import { loadHistory, analyzeTrend, formatTrendReport } from '../utils/review-history';
+import { computeQualityScore } from '../utils/quality-scorer';
 import { Orchestrator } from '../orchestrator';
 import { TaskPhase } from '../orchestrator/types';
 
@@ -168,6 +169,17 @@ export function createServer(defaultProjectPath?: string): express.Express {
       const trend = analyzeTrend(projectPath);
       const text = formatTrendReport(trend);
       res.json({ ...trend, text });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // ─── 품질 점수 ───
+  app.get('/api/quality-score', (req, res) => {
+    try {
+      const projectPath = validateProjectPath(req.query.path as string, defaultProjectPath || process.cwd());
+      const result = computeQualityScore(projectPath);
+      res.json(result);
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
