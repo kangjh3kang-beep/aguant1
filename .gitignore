@@ -4,3 +4,5 @@ coverage/
 *.js.map
 .env
 .DS_Store
+
+.ag-review/
