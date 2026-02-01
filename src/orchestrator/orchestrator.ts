@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { OrchestratorConfig, ProjectSpec, PipelineConfig, PipelineState, DEFAULT_PIPELINE_CONFIG } from './types';
 import { PipelineEngine } from './pipeline';
+import { agWarn } from '../utils/logger';
 
 export class Orchestrator {
   private config: OrchestratorConfig;
@@ -75,7 +76,7 @@ export class Orchestrator {
       return Array.isArray(data) ? data : [];
     } catch (err: unknown) {
       if (process.env.AG_DEBUG) {
-        console.warn('[Orchestrator] 히스토리 로드 실패:', err instanceof Error ? err.message : String(err));
+        agWarn('Orchestrator', '히스토리 로드 실패', err);
       }
       return [];
     }
@@ -109,7 +110,7 @@ export class Orchestrator {
         slackWebhook: raw.slackWebhook,
       };
     } catch (err: unknown) {
-      console.warn('[Orchestrator] 설정 파일 로드 실패:', err instanceof Error ? err.message : String(err));
+      agWarn('Orchestrator', '설정 파일 로드 실패', err);
       return null;
     }
   }
@@ -165,7 +166,7 @@ export class Orchestrator {
       const trimmed = history.slice(-50);
       fs.writeFileSync(historyPath, JSON.stringify(trimmed, null, 2));
     } catch (err: unknown) {
-      console.warn('[Orchestrator] 파이프라인 상태 저장 실패:', err instanceof Error ? err.message : String(err));
+      agWarn('Orchestrator', '파이프라인 상태 저장 실패', err);
     }
   }
 
@@ -212,7 +213,7 @@ function detectTechStack(projectPath: string): ProjectSpec['techStack'] {
       if (allDeps.electron) runtime = 'Electron';
     } catch (err: unknown) {
       if (process.env.AG_DEBUG) {
-        console.warn('[Orchestrator] 기술 스택 감지 실패:', err instanceof Error ? err.message : String(err));
+        agWarn('Orchestrator', '기술 스택 감지 실패', err);
       }
     }
   }

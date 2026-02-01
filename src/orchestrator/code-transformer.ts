@@ -26,6 +26,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { ASTTransformer, ASTTransformType, ASTTransformResult } from './ast-transformer';
+import { agWarn } from '../utils/logger';
 
 // ─── 변환 결과 타입 ─────────────────────────────────────
 
@@ -338,7 +339,7 @@ export class CodeTransformer {
               fs.writeFileSync(fullPath, originalCode, 'utf-8');
             } catch (restoreErr: unknown) {
               if (process.env.AG_DEBUG) {
-                console.warn('[CodeTransformer] 원본 복원 실패:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
+                agWarn('CodeTransformer', '원본 복원 실패', restoreErr);
               }
             }
             for (const r of results) {

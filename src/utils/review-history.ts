@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ReviewReport } from '../types';
+import { agWarn } from './logger';
 
 const HISTORY_DIR = '.ag-review';
 const HISTORY_FILE = 'history.json';
@@ -409,7 +410,7 @@ function ensureGitignore(projectPath: string): void {
   } catch (err: unknown) {
     // gitignore 업데이트 실패는 운영에 영향 없으나 디버깅을 위해 기록
     if (process.env.AG_DEBUG) {
-      console.warn('[ag-review] .gitignore 업데이트 실패:', err instanceof Error ? err.message : String(err));
+      agWarn('ag-review', '.gitignore 업데이트 실패', err);
     }
   }
 }

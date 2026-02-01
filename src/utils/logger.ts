@@ -50,6 +50,24 @@ export function logHeader(projectPath: string): void {
   console.log(chalk.bold('========================================\n'));
 }
 
+// ─── Structured internal logging ─────────────────────────────
+
+export function agWarn(module: string, message: string, err?: unknown): void {
+  const detail = err instanceof Error ? err.message : err ? String(err) : '';
+  console.warn(`[${module}] ${message}${detail ? ': ' + detail : ''}`);
+}
+
+export function agError(module: string, message: string, err?: unknown): void {
+  const detail = err instanceof Error ? err.message : err ? String(err) : '';
+  console.error(`[${module}] ${message}${detail ? ': ' + detail : ''}`);
+}
+
+export function agDebug(module: string, message: string): void {
+  if (process.env.AG_DEBUG) {
+    console.debug(`[${module}] ${message}`);
+  }
+}
+
 export function logSummary(passed: boolean, errors: number, warnings: number, duration: number): void {
   console.log(chalk.bold('\n----------------------------------------'));
   console.log(chalk.bold('  Review Summary'));

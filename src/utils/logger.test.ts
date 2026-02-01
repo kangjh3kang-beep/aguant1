@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import { logStageStart, logStageResult, logIssue, logHeader, logSummary } from './logger';
+import { logStageStart, logStageResult, logIssue, logHeader, logSummary, agWarn, agError, agDebug } from './logger';
 
 // Disable chalk colors for predictable test output
 chalk.level = 0;
@@ -132,6 +132,61 @@ describe('logger', () => {
       expect(allOutput).toContain('Errors:   3');
       expect(allOutput).toContain('Warnings: 1');
       expect(allOutput).toContain('2000ms');
+    });
+  });
+
+  describe('agWarn', () => {
+    let warnSpy: jest.SpyInstance;
+    beforeEach(() => { warnSpy = jest.spyOn(console, 'warn').mockImplementation(); });
+    afterEach(() => { warnSpy.mockRestore(); });
+
+    it('logs module name and message', () => {
+      agWarn('TestModule', 'something failed');
+      expect(warnSpy).toHaveBeenCalledWith('[TestModule] something failed');
+    });
+
+    it('appends error detail when provided', () => {
+      agWarn('TestModule', 'operation failed', new Error('disk full'));
+      expect(warnSpy).toHaveBeenCalledWith('[TestModule] operation failed: disk full');
+    });
+
+    it('handles non-Error objects', () => {
+      agWarn('TestModule', 'op failed', 'string error');
+      expect(warnSpy).toHaveBeenCalledWith('[TestModule] op failed: string error');
+    });
+  });
+
+  describe('agError', () => {
+    let errSpy: jest.SpyInstance;
+    beforeEach(() => { errSpy = jest.spyOn(console, 'error').mockImplementation(); });
+    afterEach(() => { errSpy.mockRestore(); });
+
+    it('logs module name and message', () => {
+      agError('TestModule', 'critical failure');
+      expect(errSpy).toHaveBeenCalledWith('[TestModule] critical failure');
+    });
+
+    it('appends error detail', () => {
+      agError('TestModule', 'crash', new Error('OOM'));
+      expect(errSpy).toHaveBeenCalledWith('[TestModule] crash: OOM');
+    });
+  });
+
+  describe('agDebug', () => {
+    let debugSpy: jest.SpyInstance;
+    beforeEach(() => { debugSpy = jest.spyOn(console, 'debug').mockImplementation(); });
+    afterEach(() => { debugSpy.mockRestore(); delete process.env.AG_DEBUG; });
+
+    it('logs when AG_DEBUG is set', () => {
+      process.env.AG_DEBUG = '1';
+      agDebug('TestModule', 'debug info');
+      expect(debugSpy).toHaveBeenCalledWith('[TestModule] debug info');
+    });
+
+    it('does not log when AG_DEBUG is not set', () => {
+      delete process.env.AG_DEBUG;
+      agDebug('TestModule', 'debug info');
+      expect(debugSpy).not.toHaveBeenCalled();
     });
   });
 });

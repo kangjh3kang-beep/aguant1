@@ -21,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import { TaskPhase } from './types';
 import { CodeTransformer, TransformType } from './code-transformer';
+import { agWarn } from '../utils/logger';
 
 // ─── 실패 패턴 타입 ─────────────────────────────────────
 
@@ -286,7 +287,7 @@ export class FailurePatternDB {
       );
     } catch (err: unknown) {
       if (process.env.AG_DEBUG) {
-        console.warn('[AdaptiveEngine] 저장 실패:', err instanceof Error ? err.message : String(err));
+        agWarn('AdaptiveEngine', '저장 실패', err);
       }
     }
   }

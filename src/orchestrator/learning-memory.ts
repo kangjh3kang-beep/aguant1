@@ -14,6 +14,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { agWarn } from '../utils/logger';
 
 // ─── 학습 데이터 구조 ───
 
@@ -108,7 +109,7 @@ export class LearningMemory {
         fs.mkdirSync(dir, { recursive: true });
       } catch (err: unknown) {
         if (process.env.AG_DEBUG) {
-          console.warn('[LearningMemory] 디렉토리 생성 실패:', err instanceof Error ? err.message : String(err));
+          agWarn('LearningMemory', '디렉토리 생성 실패', err);
         }
       }
     }
@@ -133,7 +134,7 @@ export class LearningMemory {
       }
     } catch (err: unknown) {
       if (process.env.AG_DEBUG) {
-        console.warn('[LearningMemory] 데이터 로드 실패 (초기화):', err instanceof Error ? err.message : String(err));
+        agWarn('LearningMemory', '데이터 로드 실패 (초기화)', err);
       }
     }
     return this.createEmptyData();
@@ -153,7 +154,7 @@ export class LearningMemory {
     try {
       fs.writeFileSync(this.storagePath, JSON.stringify(this.data, null, 2), 'utf-8');
     } catch (err: unknown) {
-      console.warn('[LearningMemory] 저장 실패:', err instanceof Error ? err.message : String(err));
+      agWarn('LearningMemory', '저장 실패', err);
     }
   }
 
