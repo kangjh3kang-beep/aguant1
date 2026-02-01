@@ -29,8 +29,8 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { TaskIssue, TaskPhase, PipelineState } from './types';
-import { CodeTransformer, LinePatch, TransformResult, TransformType } from './code-transformer';
+import { TaskIssue, PipelineState } from './types';
+import { CodeTransformer, LinePatch, TransformType } from './code-transformer';
 import { AgentFeedback } from './autonomous-loop';
 
 // ─── 패치 타입 ─────────────────────────────────────────
@@ -555,7 +555,7 @@ export class FeedbackRouter {
 
     // 4. 패치 적용
     const results = this.patchApplicator.applyAll(patches);
-    const appliedCount = results.filter((r) => r.applied).length;
+    const _appliedCount = results.filter((r) => r.applied).length;
 
     // 5. CodeTransformer로 추가 수정 (패치 매칭이 안 된 이슈)
     const unpatchedIssues = autoFixable.filter((issue) => {

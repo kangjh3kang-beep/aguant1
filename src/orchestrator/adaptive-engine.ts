@@ -236,7 +236,7 @@ export class FailurePatternDB {
    */
   private normalizeSignature(message: string): string {
     return message
-      .replace(/\/[\w\-\/.]+/g, '<PATH>')         // 파일 경로
+      .replace(/\/[\w\-/.]+/g, '<PATH>')         // 파일 경로
       .replace(/\d+\.\d+\.\d+/g, '<VER>')         // 버전
       .replace(/\b\d{4,}\b/g, '<NUM>')             // 긴 숫자
       .replace(/\b[0-9a-f]{8,}\b/gi, '<HASH>')    // 해시
@@ -926,6 +926,7 @@ class StrategyExecutor {
         const cmd = `npm install ${moduleName} 2>&1 || true`;
         commands.push(cmd);
         try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { execSync: exec } = require('child_process');
           const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
           outputs.push(`[STRATEGY] npm install ${moduleName}: ${output.slice(-200)}`);
@@ -942,6 +943,7 @@ class StrategyExecutor {
       const cmd = 'npm run build 2>&1 || true';
       commands.push(cmd);
       try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { execSync: exec } = require('child_process');
         const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
         const hasError = /error TS\d+/i.test(output);
@@ -965,6 +967,7 @@ class StrategyExecutor {
       const cmd = 'npx eslint --fix . 2>&1 || true';
       commands.push(cmd);
       try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { execSync: exec } = require('child_process');
         exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
         outputs.push('[STRATEGY] eslint --fix 실행 완료');
@@ -1003,6 +1006,7 @@ class StrategyExecutor {
       const cmd = 'npx jest --updateSnapshot 2>&1 || true';
       commands.push(cmd);
       try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { execSync: exec } = require('child_process');
         exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
         outputs.push('[STRATEGY] 스냅샷 업데이트 완료');
@@ -1022,6 +1026,7 @@ class StrategyExecutor {
           const cmd = `npm install --save-dev ${moduleName} 2>&1 || true`;
           commands.push(cmd);
           try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const { execSync: exec } = require('child_process');
             exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
             outputs.push(`[STRATEGY] devDependency 설치: ${moduleName}`);
@@ -1041,13 +1046,14 @@ class StrategyExecutor {
     return { success: false, commands, outputs };
   }
 
-  private handleDependencyConflict(strategy: FixStrategy): { success: boolean; commands: string[]; outputs: string[] } {
+  private handleDependencyConflict(_strategy: FixStrategy): { success: boolean; commands: string[]; outputs: string[] } {
     const commands: string[] = [];
     const outputs: string[] = [];
 
     const cmd = 'npm install --legacy-peer-deps 2>&1 || true';
     commands.push(cmd);
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { execSync: exec } = require('child_process');
       const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
       outputs.push(`[STRATEGY] --legacy-peer-deps 설치 완료: ${output.slice(-200)}`);
@@ -1060,7 +1066,7 @@ class StrategyExecutor {
     return { success: false, commands, outputs };
   }
 
-  private handleSecurityVulnerability(strategy: FixStrategy, pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
+  private handleSecurityVulnerability(strategy: FixStrategy, _pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
     const commands: string[] = [];
     const outputs: string[] = [];
 
@@ -1068,6 +1074,7 @@ class StrategyExecutor {
       const cmd = 'npm audit fix 2>&1 || true';
       commands.push(cmd);
       try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { execSync: exec } = require('child_process');
         const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 120000 });
         outputs.push(`[STRATEGY] npm audit fix 완료: ${output.slice(-200)}`);
@@ -1094,7 +1101,7 @@ class StrategyExecutor {
     return { success: false, commands, outputs };
   }
 
-  private handleTypeError(strategy: FixStrategy): { success: boolean; commands: string[]; outputs: string[] } {
+  private handleTypeError(_strategy: FixStrategy): { success: boolean; commands: string[]; outputs: string[] } {
     const commands: string[] = [];
     const outputs: string[] = [];
 
@@ -1110,6 +1117,7 @@ class StrategyExecutor {
     const cmd = 'npx tsc --noEmit 2>&1 || true';
     commands.push(cmd);
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { execSync: exec } = require('child_process');
       const output = exec(cmd, { cwd: this.projectPath, encoding: 'utf-8', timeout: 60000 });
       const hasError = /error TS\d+/i.test(output);
@@ -1123,7 +1131,7 @@ class StrategyExecutor {
     return { success: transformResult.changed > 0, commands, outputs };
   }
 
-  private handleArchitectureViolation(strategy: FixStrategy, pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
+  private handleArchitectureViolation(strategy: FixStrategy, _pattern: FailurePattern): { success: boolean; commands: string[]; outputs: string[] } {
     const commands: string[] = [];
     const outputs: string[] = [];
 

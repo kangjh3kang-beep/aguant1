@@ -6,15 +6,15 @@
 
 import fs from 'fs';
 import { execSync } from 'child_process';
-import path from 'path';
 
 jest.mock('fs');
 jest.mock('child_process');
 
 const mockFs = fs as jest.Mocked<typeof fs>;
-const mockExecSync = execSync as jest.MockedFunction<typeof execSync>;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _mockExecSync = execSync as jest.MockedFunction<typeof execSync>;
 
-import { ASTTransformer, ASTTransformResult, ASTTransformType } from './ast-transformer';
+import { ASTTransformer, ASTTransformType } from './ast-transformer';
 
 describe('ASTTransformer', () => {
   const projectPath = '/test/project';

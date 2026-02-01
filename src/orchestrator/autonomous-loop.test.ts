@@ -10,7 +10,6 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 
 // 의존성 모킹
 jest.mock('fs');
@@ -24,7 +23,7 @@ jest.mock('./learning-memory');
 
 const mockFs = fs as jest.Mocked<typeof fs>;
 
-import { AutonomousLoop, DEFAULT_AUTONOMOUS_CONFIG, LoopSummary } from './autonomous-loop';
+import { AutonomousLoop, DEFAULT_AUTONOMOUS_CONFIG } from './autonomous-loop';
 import { PipelineEngine } from './pipeline';
 import { LearningMemory } from './learning-memory';
 import { AdaptiveEngine } from './adaptive-engine';

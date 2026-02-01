@@ -160,16 +160,6 @@ function makeSuccessResult(): TaskResult {
   };
 }
 
-function makeFailureResult(): TaskResult {
-  return {
-    success: false,
-    output: 'Task failed',
-    artifacts: [],
-    issues: [{ severity: 'error', message: 'Something broke', autoFixable: false }],
-    duration: 50,
-  };
-}
-
 /**
  * Sets up the default happy-path mocks for a given set of phases and tasks.
  */
@@ -178,7 +168,7 @@ function setupHappyPathMocks(tasks: Task[]): void {
 
   // getReadyTasks: first call returns tasks for current phase, second call returns [] to end the while loop
   let callCount = 0;
-  mockGetReadyTasks.mockImplementation((allTasks: Task[]) => {
+  mockGetReadyTasks.mockImplementation((_allTasks: Task[]) => {
     callCount++;
     // On odd calls return tasks, on even calls return [] to exit the while loop
     if (callCount % 2 === 1) {
@@ -719,7 +709,7 @@ describe('PipelineEngine', () => {
 
       // getReadyTasks alternates: return matching tasks then empty
       let readyCallCount = 0;
-      mockGetReadyTasks.mockImplementation((tasks: Task[]) => {
+      mockGetReadyTasks.mockImplementation((_tasks: Task[]) => {
         readyCallCount++;
         if (readyCallCount === 1) return [planTask];
         if (readyCallCount === 3) return [codeTask];

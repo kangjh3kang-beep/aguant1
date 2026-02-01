@@ -2,7 +2,7 @@
  * Task Manager - 프로젝트를 태스크로 분해하고 추적합니다.
  */
 
-import { Task, TaskPhase, TaskStatus, TaskResult, ProjectSpec, Requirement } from './types';
+import { Task, TaskPhase, TaskStatus, TaskResult, ProjectSpec } from './types';
 
 let taskCounter = 0;
 

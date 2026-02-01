@@ -15,10 +15,10 @@ export type { TaskIssue };
 // ─── Browser context type declarations ───────────────────────
 // page.evaluate() callbacks run in the browser context via Puppeteer.
 // Node.js tsconfig lacks DOM types, so we use Record-based declarations.
-/* eslint-disable no-var, @typescript-eslint/no-explicit-any */
+/* eslint-disable no-var, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 declare var document: Record<string, any>;
 declare var window: Record<string, any>;
-/* eslint-enable no-var, @typescript-eslint/no-explicit-any */
+/* eslint-enable no-var, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 
 // ─── Type Definitions ────────────────────────────────────────
 

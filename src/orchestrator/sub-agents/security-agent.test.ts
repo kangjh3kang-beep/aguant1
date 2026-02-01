@@ -541,6 +541,7 @@ describe('SecurityAgent', () => {
     });
 
     it('should skip AI analysis when no sensitive files found', () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoDetectProvider } = require('../ai-provider');
       (autoDetectProvider as jest.Mock).mockReturnValue({ provider: 'claude', apiKey: 'test-key' });
 

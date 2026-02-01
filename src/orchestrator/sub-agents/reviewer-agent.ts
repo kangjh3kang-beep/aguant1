@@ -259,6 +259,7 @@ export class ReviewerAgent extends BaseSubAgent {
       logs.push('[REVIEWER] ── CodeTransformer 자동 수정 실행 ──');
       try {
         // 지연 로딩: 테스트 환경에서 typescript 모듈 로드 오류 방지
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { CodeTransformer } = require('../code-transformer');
         const transformer = new CodeTransformer(projectPath);
         for (const [file, data] of fileSmells) {

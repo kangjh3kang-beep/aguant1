@@ -638,6 +638,7 @@ describe('Web Server (server.ts)', () => {
 
       // Spy on Express listen — we need to intercept it via the prototype
       const listenSpy = jest.spyOn(
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         require('http').Server.prototype,
         'listen',
       ).mockImplementation(function (this: unknown, ...args: unknown[]) {

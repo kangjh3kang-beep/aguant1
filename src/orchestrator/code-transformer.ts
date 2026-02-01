@@ -25,7 +25,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { ASTTransformer, ASTTransformType, ASTTransformResult } from './ast-transformer';
+import { ASTTransformer, ASTTransformType } from './ast-transformer';
 import { agWarn } from '../utils/logger';
 
 // ─── 변환 결과 타입 ─────────────────────────────────────
@@ -431,7 +431,7 @@ export class CodeTransformer {
           });
         } else if (unusedImports.length > 0) {
           // 일부만 미사용 → 해당 식별자만 제거
-          let newImportList = imports.filter((imp) => !unusedImports.includes(imp)).join(', ');
+          const newImportList = imports.filter((imp) => !unusedImports.includes(imp)).join(', ');
           const fromPart = line.match(/from\s+['"][^'"]+['"]/);
           if (fromPart) {
             const newLine = `import { ${newImportList} } ${fromPart[0]}${line.endsWith(';') ? ';' : ''}`;
@@ -819,7 +819,7 @@ export class CodeTransformer {
     for (const issue of issues) {
       if (!issue.file) continue;
 
-      const msg = issue.message.toLowerCase();
+      const _msg = issue.message.toLowerCase();
 
       // 미사용 import
       if (/unused.*import|declared but.*never (read|used)/i.test(issue.message)) {

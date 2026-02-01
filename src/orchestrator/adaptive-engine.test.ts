@@ -7,7 +7,6 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 
 jest.mock('fs');
 jest.mock('child_process');
@@ -26,8 +25,6 @@ import {
   AdaptiveEngine,
   FailurePattern,
   FailureCategory,
-  FixStrategy,
-  LearningReport,
 } from './adaptive-engine';
 import type { TaskPhase } from './types';
 

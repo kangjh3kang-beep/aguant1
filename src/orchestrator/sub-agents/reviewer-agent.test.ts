@@ -443,6 +443,7 @@ describe('ReviewerAgent', () => {
       });
 
       // Make CodeTransformer constructor throw
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { CodeTransformer } = require('../code-transformer');
       (CodeTransformer as jest.Mock).mockImplementationOnce(() => {
         throw new Error('TypeScript not available');
@@ -467,6 +468,7 @@ describe('ReviewerAgent', () => {
 
     it('should skip AI review when no source files > 20 lines exist', () => {
       // Even if AI provider is available, no files to review
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoDetectProvider } = require('../ai-provider');
       (autoDetectProvider as jest.Mock).mockReturnValue({ provider: 'claude', apiKey: 'test-key' });
 

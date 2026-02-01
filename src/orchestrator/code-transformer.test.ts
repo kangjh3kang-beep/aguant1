@@ -5,7 +5,6 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 import { execSync } from 'child_process';
 
 // typescript/ast-transformer 모듈 의존성 차단
@@ -23,8 +22,8 @@ const mockFs = fs as jest.Mocked<typeof fs>;
 const mockExecSync = execSync as jest.MockedFunction<typeof execSync>;
 
 // CodeTransformer import (ast-transformer mock 적용 후)
-import { CodeTransformer, TransformType } from './code-transformer';
-import { PatchGenerator, PatchApplicator, PatchValidator } from './direct-feedback-pipeline';
+import { CodeTransformer } from './code-transformer';
+import { PatchGenerator, PatchValidator } from './direct-feedback-pipeline';
 import { TaskIssue } from './types';
 
 describe('CodeTransformer', () => {

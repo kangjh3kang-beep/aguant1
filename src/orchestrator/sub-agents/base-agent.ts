@@ -11,8 +11,6 @@
  *  EventBus를 통해 실시간 이벤트를 발행/구독합니다.
  */
 
-import fs from 'fs';
-import path from 'path';
 import { Task, TaskResult, TaskIssue, SubAgentConfig, SubAgentInfo, AgentRole, AgentStatus } from '../types';
 import { PromptEnhancer, EnhancedPrompt } from '../prompt-enhancer';
 import { SharedKnowledgeBase, EventBus, ContextChain, InsightCategory, InsightSeverity } from '../shared-knowledge';
@@ -286,6 +284,7 @@ export abstract class BaseSubAgent {
   ): string | null {
     try {
       // 지연 로딩: 테스트 환경에서 순환 의존 방지
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoDetectProvider } = require('../ai-provider');
       const aiConfig = this.config.aiProvider || autoDetectProvider();
       if (!aiConfig) return null;
@@ -311,6 +310,7 @@ export abstract class BaseSubAgent {
    */
   protected hasAIProvider(): boolean {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoDetectProvider } = require('../ai-provider');
       return !!(this.config.aiProvider || autoDetectProvider());
     } catch (_err: unknown) {
@@ -318,7 +318,7 @@ export abstract class BaseSubAgent {
     }
   }
 
-  private mapIssueToCategoryForRole(issue: TaskIssue): InsightCategory {
+  private mapIssueToCategoryForRole(_issue: TaskIssue): InsightCategory {
     switch (this.config.role) {
       case 'planner': return 'architecture';
       case 'coder': return 'code-pattern';

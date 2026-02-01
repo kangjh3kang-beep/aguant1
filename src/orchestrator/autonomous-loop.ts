@@ -32,11 +32,11 @@
  *   - 사용자가 humanGates로 지정한 단계
  */
 
-import { TaskResult, TaskIssue, TaskPhase, PipelineState, PipelineConfig, ProjectSpec, DEFAULT_PIPELINE_CONFIG } from './types';
+import { TaskIssue, TaskPhase, PipelineState, PipelineConfig, ProjectSpec, DEFAULT_PIPELINE_CONFIG } from './types';
 import { PipelineEngine } from './pipeline';
 import { PromptEnhancer } from './prompt-enhancer';
-import { AdaptiveEngine, FixStrategy, FailurePattern } from './adaptive-engine';
-import { DirectFeedbackPipeline, PipelineResult as DirectPatchResult } from './direct-feedback-pipeline';
+import { AdaptiveEngine } from './adaptive-engine';
+import { DirectFeedbackPipeline } from './direct-feedback-pipeline';
 import { callAISyncUtil } from '../utils/ai-sync-caller';
 import { CodeTransformer } from './code-transformer';
 import { LearningMemory } from './learning-memory';
@@ -205,6 +205,7 @@ export class AutonomousLoop {
     this.promptEnhancer = new PromptEnhancer();
 
     // AdaptiveEngine: 학습 데이터 저장 경로
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const storagePath = require('path').join(project.rootPath, '.ag-review');
     this.adaptiveEngine = new AdaptiveEngine(storagePath);
 
@@ -713,7 +714,7 @@ export class AutonomousLoop {
 
   private buildSummary(): void {
     const lastResult = this.state.pipelineResults[this.state.pipelineResults.length - 1];
-    const allIssues = this.state.pipelineResults.flatMap((r) =>
+    const _allIssues = this.state.pipelineResults.flatMap((r) =>
       r.tasks.flatMap((t) => (t.result ? t.result.issues : []))
     );
 
@@ -852,7 +853,9 @@ export class AutonomousLoop {
     let depCount = 0;
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const fs = require('fs');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const path = require('path');
 
       // 디렉토리 스캔
@@ -1189,7 +1192,7 @@ export class AutonomousLoop {
    */
   private calculateQualityScore(
     pipelineResult: PipelineState,
-    analysis: { totalIssues: number; autoFixable: TaskIssue[]; allPassed: boolean },
+    _analysis: { totalIssues: number; autoFixable: TaskIssue[]; allPassed: boolean },
   ): number {
     let score = 100;
 
@@ -1308,6 +1311,7 @@ export class AutonomousLoop {
     qualityScore: number,
   ): { verdict: string; score: number; feedback: string } | null {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoDetectProvider } = require('./ai-provider');
       const aiConfig = autoDetectProvider();
       if (!aiConfig) return null;

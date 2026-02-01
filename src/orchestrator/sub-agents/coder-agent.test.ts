@@ -53,8 +53,8 @@ const mockFs = fs as jest.Mocked<typeof fs>;
 const mockExecSync = execSync as jest.MockedFunction<typeof execSync>;
 
 import { CoderAgent } from './coder-agent';
-import { SubAgentConfig, Task, TaskResult } from '../types';
-import { autoDetectProvider, generateCode } from '../ai-provider';
+import { SubAgentConfig, Task } from '../types';
+import { autoDetectProvider } from '../ai-provider';
 import { CodeGenV2, DEFAULT_CODEGEN_V2_CONFIG } from '../code-gen-v2';
 import { callAISyncUtil } from '../../utils/ai-sync-caller';
 

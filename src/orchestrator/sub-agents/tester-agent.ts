@@ -748,6 +748,7 @@ export class TesterAgent extends BaseSubAgent {
 
     // CodeTransformer로 기본 정리 실행
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { CodeTransformer } = require('../code-transformer');
       const transformer = new CodeTransformer(projectPath);
       const cleanupResult = transformer.transformProject(

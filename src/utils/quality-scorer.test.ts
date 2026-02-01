@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 
 // ─── Mocks ───
 const mockRun = jest.fn();
@@ -13,7 +12,7 @@ jest.mock('./config-loader', () => ({
   loadConfig: jest.fn().mockReturnValue({ config: null, errors: [] }),
 }));
 
-import { computeQualityScore, QualityScoreResult } from './quality-scorer';
+import { computeQualityScore } from './quality-scorer';
 
 // ─── Helpers ───
 

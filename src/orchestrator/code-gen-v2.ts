@@ -121,7 +121,7 @@ export class CodeValidator {
   /**
    * 기본 구문 검증 (괄호 매칭, import 문법 등)
    */
-  private validateSyntax(code: string, filePath: string): ValidationResult {
+  private validateSyntax(code: string, _filePath: string): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -550,7 +550,7 @@ export class TestFirstPipeline {
   }
 
   private generatePytestSkeleton(taskTitle: string, testCases: string[]): string {
-    const safeName = taskTitle.replace(/[^a-zA-Z0-9_\s]/g, '').replace(/\s+/g, '_').toLowerCase();
+    const _safeName = taskTitle.replace(/[^a-zA-Z0-9_\s]/g, '').replace(/\s+/g, '_').toLowerCase();
     const lines: string[] = [];
 
     lines.push(`"""Test suite for: ${taskTitle}"""`);

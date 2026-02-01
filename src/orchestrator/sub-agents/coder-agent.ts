@@ -16,8 +16,8 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { Task, TaskResult } from '../types';
 import { BaseSubAgent } from './base-agent';
-import { generateCode, autoDetectProvider, AICodeResponse } from '../ai-provider';
-import { CodeGenV2, DEFAULT_CODEGEN_V2_CONFIG, ValidationResult } from '../code-gen-v2';
+import { autoDetectProvider } from '../ai-provider';
+import { CodeGenV2, ValidationResult } from '../code-gen-v2';
 import { callAISyncUtil } from '../../utils/ai-sync-caller';
 
 export class CoderAgent extends BaseSubAgent {

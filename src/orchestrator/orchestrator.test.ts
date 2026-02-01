@@ -163,6 +163,7 @@ function makeTask(overrides: Partial<{ id: string; phase: string; title: string;
 }
 
 describe('ReviewerAgent — auto-fix path', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('fs');
 
   beforeEach(() => {
@@ -206,7 +207,8 @@ describe('ReviewerAgent — auto-fix path', () => {
     );
 
     // 수정 가능한 이슈가 autoFixable: true로 분류되었는지 확인
-    const fixableIssues = result.issues.filter((i: { autoFixable: boolean }) => i.autoFixable);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _fixableIssues = result.issues.filter((i: { autoFixable: boolean }) => i.autoFixable);
     // CodeTransformer가 실제로 호출되었는지
     expect(mockTransformFile.mock.calls.length).toBeGreaterThanOrEqual(0);
     expect(result.artifacts.some((a: string) => a.includes('AUTO-FIX') || a.includes('CODE-QUALITY'))).toBe(true);
@@ -214,7 +216,9 @@ describe('ReviewerAgent — auto-fix path', () => {
 });
 
 describe('TesterAgent — auto-fix path', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const child_process = require('child_process');
 
   beforeEach(() => {
