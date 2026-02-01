@@ -6,7 +6,7 @@
 
 import { PuppeteerPage } from './types';
 
-// Browser context type declarations for page.evaluate() callbacks
+// Browser context type declarations — `any` required (no DOM lib in tsconfig)
 /* eslint-disable no-var, @typescript-eslint/no-explicit-any */
 declare var window: Record<string, any>;
 /* eslint-enable no-var, @typescript-eslint/no-explicit-any */

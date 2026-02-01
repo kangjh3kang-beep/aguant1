@@ -8,7 +8,10 @@
 
 import { PuppeteerPage, A11yViolation, TaskIssue } from './types';
 
-// Browser context type declarations for page.evaluate() callbacks
+// Browser context type declarations for page.evaluate() callbacks.
+// `any` is intentional: DOM types (Element, HTMLElement, etc.) are not
+// available in this project's tsconfig (lib: ES2020, no "dom").
+// These callbacks execute in the browser, not Node.js.
 /* eslint-disable no-var, @typescript-eslint/no-explicit-any */
 declare var document: Record<string, any>;
 declare var window: Record<string, any>;

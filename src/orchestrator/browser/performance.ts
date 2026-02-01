@@ -14,6 +14,8 @@ export class PerformanceAnalyzer {
    */
   async measure(page: PuppeteerPage): Promise<PerformanceMetrics> {
     const metrics = await page.evaluate(() => {
+      // `any` is intentional: Performance API types require "dom" lib,
+      // which is excluded in this Node.js project's tsconfig.
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const perf = performance as any;
       const nav = perf.getEntriesByType('navigation')[0];
