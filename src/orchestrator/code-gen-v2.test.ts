@@ -33,7 +33,7 @@ describe('CodeValidator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFs.existsSync.mockReturnValue(true);
-    mockFs.mkdirSync.mockReturnValue(undefined as any);
+    (mockFs.mkdirSync as jest.Mock).mockReturnValue(undefined);
     mockFs.writeFileSync.mockReturnValue(undefined);
     mockFs.unlinkSync.mockReturnValue(undefined);
     validator = new CodeValidator(projectPath);
@@ -42,7 +42,7 @@ describe('CodeValidator', () => {
   describe('validate', () => {
     it('should return validation results including syntax, compile, lint, and quality for .ts files', () => {
       // tsc succeeds (no error thrown)
-      mockExecSync.mockReturnValue('' as any);
+      (mockExecSync as jest.Mock).mockReturnValue('');
 
       const code = `export function greet(name: string): string {\n  return 'Hello ' + name;\n}\n`;
       const results = validator.validate(code, 'src/greeting.ts');
@@ -105,7 +105,7 @@ describe('CodeValidator', () => {
 
   describe('validateTypeScript (via validate)', () => {
     it('should pass when tsc succeeds', () => {
-      mockExecSync.mockReturnValue('' as any);
+      (mockExecSync as jest.Mock).mockReturnValue('');
 
       const code = `export const x: number = 1;\n`;
       const results = validator.validate(code, 'src/good.ts');
@@ -295,7 +295,7 @@ describe('FallbackChain', () => {
   describe('generateLocalFix', () => {
     it('should add missing import when error is "Cannot find module"', () => {
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue('const x = 1;\n' as any);
+      (mockFs.readFileSync as jest.Mock).mockReturnValue('const x = 1;\n');
 
       const chain = new FallbackChain();
       const result = chain.generateLocalFix(
@@ -323,7 +323,7 @@ describe('FallbackChain', () => {
 
     it('should return null for unrecognized error messages', () => {
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue('const x = 1;\n' as any);
+      (mockFs.readFileSync as jest.Mock).mockReturnValue('const x = 1;\n');
 
       const chain = new FallbackChain();
       const result = chain.generateLocalFix(
@@ -506,10 +506,10 @@ describe('CodeGenV2', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFs.existsSync.mockReturnValue(true);
-    mockFs.mkdirSync.mockReturnValue(undefined as any);
+    (mockFs.mkdirSync as jest.Mock).mockReturnValue(undefined);
     mockFs.writeFileSync.mockReturnValue(undefined);
     mockFs.unlinkSync.mockReturnValue(undefined);
-    mockExecSync.mockReturnValue('' as any);
+    (mockExecSync as jest.Mock).mockReturnValue('');
   });
 
   it('should use default config when none provided', () => {

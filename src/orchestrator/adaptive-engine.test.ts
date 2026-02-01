@@ -41,7 +41,7 @@ describe('FailurePatternDB', () => {
     // Empty DB — no file on disk
     mockFs.existsSync.mockReturnValue(false);
     mockFs.writeFileSync.mockImplementation(() => {});
-    mockFs.mkdirSync.mockImplementation(() => undefined as any);
+    (mockFs.mkdirSync as jest.Mock).mockImplementation(() => undefined);
     db = new FailurePatternDB(storagePath);
   });
 
@@ -497,7 +497,7 @@ describe('AdaptiveEngine', () => {
     jest.clearAllMocks();
     mockFs.existsSync.mockReturnValue(false);
     mockFs.writeFileSync.mockImplementation(() => {});
-    mockFs.mkdirSync.mockImplementation(() => undefined as any);
+    (mockFs.mkdirSync as jest.Mock).mockImplementation(() => undefined);
     engine = new AdaptiveEngine(storagePath);
   });
 

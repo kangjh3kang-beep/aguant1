@@ -22,6 +22,7 @@ import {
 import { decomposeProject, getReadyTasks, isPhaseComplete, hasPhaseFailure, updateTaskStatus, retryTask, getProgress } from './task-manager';
 import { BaseSubAgent, createAgent, createDefaultAgentConfigs } from './sub-agents';
 import { SharedKnowledgeBase, EventBus, ContextChain } from './shared-knowledge';
+import { execSync } from 'child_process';
 
 export class PipelineEngine {
   private state: PipelineState;
@@ -108,6 +109,15 @@ export class PipelineEngine {
 
         // 이 phase의 태스크 실행
         this.executePhase(phase);
+
+        // ── 코드 변경 안전장치: code phase 완료 후 테스트 검증 ──
+        if (phase === 'code') {
+          const verified = this.verifyAfterCodeChanges(this.state.project.rootPath);
+          if (!verified) {
+            this.log('warn', '  코드 변경 후 테스트 실패 → 변경사항 롤백', phase);
+            this.rollbackCodeChanges(this.state.project.rootPath);
+          }
+        }
 
         // Phase 완료 후 ContextChain에 결과 저장
         this.storePhaseContext(phase);
@@ -321,6 +331,44 @@ export class PipelineEngine {
       phase,
       message,
     });
+  }
+
+  /**
+   * 코드 변경 후 테스트가 여전히 통과하는지 검증합니다.
+   * code phase 완료 직후 실행되어, 깨진 코드가 후속 phase로 전파되는 것을 방지합니다.
+   */
+  private verifyAfterCodeChanges(projectPath: string): boolean {
+    this.log('info', '  [SafeGuard] 코드 변경 후 테스트 검증 시작...', 'code');
+    try {
+      execSync('npx jest --bail --no-coverage 2>&1', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 120_000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      this.log('info', '  [SafeGuard] ✓ 테스트 검증 통과', 'code');
+      return true;
+    } catch {
+      this.log('error', '  [SafeGuard] ✗ 코드 변경으로 인해 테스트 실패 감지', 'code');
+      return false;
+    }
+  }
+
+  /**
+   * 코드 변경으로 인해 테스트가 실패한 경우, git으로 변경사항을 롤백합니다.
+   */
+  private rollbackCodeChanges(projectPath: string): void {
+    try {
+      execSync('git checkout -- .', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 10_000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      this.log('info', '  [SafeGuard] 코드 변경 롤백 완료 (git checkout)', 'code');
+    } catch {
+      this.log('warn', '  [SafeGuard] 롤백 실패 — 수동 확인 필요', 'code');
+    }
   }
 
   /**

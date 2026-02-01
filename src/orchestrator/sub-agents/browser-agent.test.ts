@@ -103,7 +103,7 @@ describe('BrowserAgent', () => {
     agent = new BrowserAgent(createBrowserConfig());
 
     // 기본적으로 puppeteer 사용 불가로 스파이 설정
-    checkPuppeteerSpy = jest.spyOn(agent as any, 'checkPuppeteerRuntime').mockReturnValue(false);
+    checkPuppeteerSpy = jest.spyOn(agent as unknown as { checkPuppeteerRuntime: () => boolean }, 'checkPuppeteerRuntime').mockReturnValue(false);
   });
 
   // ═══ 기본 동작 ═══
@@ -615,7 +615,7 @@ describe('BrowserAgent', () => {
       };
 
       agent = new BrowserAgent(createBrowserConfig({ browserConfig: cloudConfig }));
-      checkPuppeteerSpy = jest.spyOn(agent as any, 'checkPuppeteerRuntime').mockReturnValue(false);
+      checkPuppeteerSpy = jest.spyOn(agent as unknown as { checkPuppeteerRuntime: () => boolean }, 'checkPuppeteerRuntime').mockReturnValue(false);
       const result = agent.run(createTask(), PROJECT_PATH);
 
       expect(result.output).toContain('Cloud browser: browserless');

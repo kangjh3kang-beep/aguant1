@@ -8,14 +8,58 @@
 
 import { PuppeteerPage, A11yViolation, TaskIssue } from './types';
 
-// Browser context type declarations for page.evaluate() callbacks.
-// `any` is intentional: DOM types (Element, HTMLElement, etc.) are not
-// available in this project's tsconfig (lib: ES2020, no "dom").
-// These callbacks execute in the browser, not Node.js.
-/* eslint-disable no-var, @typescript-eslint/no-explicit-any */
-declare var document: Record<string, any>;
-declare var window: Record<string, any>;
-/* eslint-enable no-var, @typescript-eslint/no-explicit-any */
+// Browser-context interfaces for page.evaluate() callbacks.
+// DOM types (Element, HTMLElement, etc.) are unavailable in this tsconfig
+// (lib: ES2020, no "dom"), so we define minimal interfaces covering only
+// the properties/methods actually used in the auditor callbacks.
+
+interface BrowserAttr {
+  readonly name: string;
+  readonly value: string;
+}
+
+interface BrowserElement {
+  readonly tagName: string;
+  readonly id: string;
+  readonly outerHTML: string;
+  readonly textContent: string | null;
+  readonly classList: ArrayLike<string>;
+  readonly attributes: ArrayLike<BrowserAttr>;
+  hasAttribute(name: string): boolean;
+  getAttribute(name: string): string | null;
+  querySelector(selector: string): BrowserElement | null;
+  closest(selector: string): BrowserElement | null;
+}
+
+interface BrowserNodeList {
+  forEach(callback: (el: BrowserElement) => void): void;
+  readonly length: number;
+  readonly [index: number]: BrowserElement;
+}
+
+interface BrowserCSSStyleDeclaration {
+  readonly color: string;
+  readonly backgroundColor: string;
+  readonly outlineStyle: string;
+  readonly outlineWidth: string;
+  readonly fontSize: string;
+  readonly fontWeight: string;
+}
+
+interface BrowserDocument {
+  querySelectorAll(selector: string): BrowserNodeList;
+  querySelector(selector: string): BrowserElement | null;
+  readonly documentElement: BrowserElement;
+}
+
+interface BrowserWindow {
+  getComputedStyle(el: BrowserElement): BrowserCSSStyleDeclaration;
+}
+
+/* eslint-disable no-var */
+declare var document: BrowserDocument;
+declare var window: BrowserWindow;
+/* eslint-enable no-var */
 
 export class A11yAuditor {
   /**
@@ -34,7 +78,7 @@ export class A11yAuditor {
       }> = [];
 
       // 1. img without alt
-      document.querySelectorAll('img').forEach((img: any) => {
+      document.querySelectorAll('img').forEach((img: BrowserElement) => {
         if (!img.hasAttribute('alt')) {
           results.push({
             rule: 'WCAG 1.1.1',
@@ -48,7 +92,7 @@ export class A11yAuditor {
       });
 
       // 2. buttons/links without accessible name
-      document.querySelectorAll('button, a[href], [role="button"], [role="link"]').forEach((el: any) => {
+      document.querySelectorAll('button, a[href], [role="button"], [role="link"]').forEach((el: BrowserElement) => {
         const text = el.textContent?.trim() || '';
         const ariaLabel = el.getAttribute('aria-label') || '';
         const ariaLabelledBy = el.getAttribute('aria-labelledby') || '';
@@ -71,7 +115,7 @@ export class A11yAuditor {
       });
 
       // 3. form inputs without labels
-      document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select').forEach((input: any) => {
+      document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select').forEach((input: BrowserElement) => {
         const id = input.getAttribute('id');
         const ariaLabel = input.getAttribute('aria-label');
         const ariaLabelledBy = input.getAttribute('aria-labelledby');
@@ -92,17 +136,17 @@ export class A11yAuditor {
       });
 
       // 4. heading hierarchy
-      const headings: any[] = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+      const headings: BrowserElement[] = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
       let prevLevel = 0;
       for (const h of headings) {
-        const level = parseInt((h as any).tagName.charAt(1));
+        const level = parseInt(h.tagName.charAt(1));
         if (prevLevel > 0 && level > prevLevel + 1) {
           results.push({
             rule: 'WCAG 1.3.1',
             impact: 'moderate',
             description: `제목 계층 구조 불연속: <h${prevLevel}> 다음에 <h${level}> (건너뜀)`,
             selector: getSelector(h),
-            html: (h as any).outerHTML.slice(0, 200),
+            html: h.outerHTML.slice(0, 200),
             suggestion: `<h${prevLevel + 1}>을 사용하거나 중간 제목을 추가하세요`,
           });
         }
@@ -117,13 +161,13 @@ export class A11yAuditor {
           impact: 'serious',
           description: '<html> 요소에 lang 속성이 없습니다',
           selector: 'html',
-          html: `<html ${Array.from(htmlEl.attributes).map((a: any) => `${a.name}="${a.value}"`).join(' ')}>`,
+          html: `<html ${Array.from(htmlEl.attributes).map((a: BrowserAttr) => `${a.name}="${a.value}"`).join(' ')}>`,
           suggestion: '<html lang="ko"> 또는 <html lang="en"> 추가',
         });
       }
 
       // 6. color contrast (heuristic)
-      document.querySelectorAll('p, span, a, li, td, th, label, div').forEach((el: any) => {
+      document.querySelectorAll('p, span, a, li, td, th, label, div').forEach((el: BrowserElement) => {
         const style = window.getComputedStyle(el);
         const color = style.color;
         const bg = style.backgroundColor;
@@ -159,7 +203,7 @@ export class A11yAuditor {
         'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])',
       );
       let noOutlineCount = 0;
-      focusableElements.forEach((el: any) => {
+      focusableElements.forEach((el: BrowserElement) => {
         const style = window.getComputedStyle(el);
         if (style.outlineStyle === 'none' && style.outlineWidth === '0px') {
           noOutlineCount++;
@@ -177,7 +221,7 @@ export class A11yAuditor {
       }
 
       // 8. tabindex > 0 (disrupts natural order)
-      document.querySelectorAll('[tabindex]').forEach((el: any) => {
+      document.querySelectorAll('[tabindex]').forEach((el: BrowserElement) => {
         const tabIndex = parseInt(el.getAttribute('tabindex') || '0');
         if (tabIndex > 0) {
           results.push({
@@ -195,7 +239,7 @@ export class A11yAuditor {
 
       // -- Utility functions --
 
-      function getSelector(el: any): string {
+      function getSelector(el: BrowserElement): string {
         if (el.id) return `#${el.id}`;
         const classes = Array.from(el.classList).slice(0, 3).join('.');
         const tag = el.tagName.toLowerCase();

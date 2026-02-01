@@ -125,7 +125,7 @@ describe('AutonomousLoop', () => {
     mockFs.existsSync.mockReturnValue(false);
     mockFs.readFileSync.mockReturnValue('{}');
     mockFs.readdirSync.mockReturnValue([]);
-    mockFs.statSync.mockReturnValue({ isDirectory: () => false, isFile: () => true, size: 100 } as any);
+    (mockFs.statSync as jest.Mock).mockReturnValue({ isDirectory: () => false, isFile: () => true, size: 100 });
 
     // PipelineEngine 모킹
     mockPipelineRun = jest.fn().mockReturnValue(createMockPipelineResult({ allPassed: true }));

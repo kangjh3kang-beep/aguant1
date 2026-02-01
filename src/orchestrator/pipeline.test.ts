@@ -74,6 +74,12 @@ const mockContextChainGetPhaseResult = jest.fn();
 const mockContextChainGetAll = jest.fn().mockReturnValue([]);
 const mockContextChainBuildContextForNextPhase = jest.fn().mockReturnValue('');
 
+// ─── Mock: child_process (for safety guard) ─────────────
+const mockExecSync = jest.fn();
+jest.mock('child_process', () => ({
+  execSync: (...args: unknown[]) => mockExecSync(...args),
+}));
+
 jest.mock('./shared-knowledge', () => ({
   SharedKnowledgeBase: jest.fn().mockImplementation(() => ({
     addInsight: mockKBAddInsight,
@@ -699,15 +705,10 @@ describe('PipelineEngine', () => {
   // ═══════════════════════════════════════════════════════
 
   describe('multi-phase execution', () => {
-    it('should execute multiple phases in order', () => {
-      const planTask = makeTask({ id: 'task-plan', phase: 'plan', assignedAgent: 'planner' });
-      const codeTask = makeTask({ id: 'task-code', phase: 'code', assignedAgent: 'coder' });
-
+    function setupMultiPhaseMocks(planTask: Task, codeTask: Task) {
       const allTasks = [planTask, codeTask];
-
       mockDecomposeProject.mockReturnValue(allTasks);
 
-      // getReadyTasks alternates: return matching tasks then empty
       let readyCallCount = 0;
       mockGetReadyTasks.mockImplementation((_tasks: Task[]) => {
         readyCallCount++;
@@ -739,6 +740,12 @@ describe('PipelineEngine', () => {
         getInfo: mockAgentGetInfo,
         connectKnowledge: mockAgentConnectKnowledge,
       });
+    }
+
+    it('should execute multiple phases in order', () => {
+      const planTask = makeTask({ id: 'task-plan', phase: 'plan', assignedAgent: 'planner' });
+      const codeTask = makeTask({ id: 'task-code', phase: 'code', assignedAgent: 'coder' });
+      setupMultiPhaseMocks(planTask, codeTask);
 
       const engine = new PipelineEngine(defaultProject, {
         phases: ['plan', 'code'],
@@ -752,8 +759,134 @@ describe('PipelineEngine', () => {
       const result = engine.run();
 
       expect(result.status).toBe('completed');
-      // ContextChain should have been called for both phases
       expect(mockContextChainAddPhaseResult).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════
+  // 10. Code-change safety guard
+  // ═══════════════════════════════════════════════════════
+
+  describe('code-change safety guard', () => {
+    function setupCodePhasePipeline() {
+      const codeTask = makeTask({ id: 'task-code', phase: 'code', assignedAgent: 'coder' });
+      mockDecomposeProject.mockReturnValue([codeTask]);
+
+      let readyCallCount = 0;
+      mockGetReadyTasks.mockImplementation(() => {
+        readyCallCount++;
+        if (readyCallCount === 1) return [codeTask];
+        return [];
+      });
+
+      mockIsPhaseComplete.mockReturnValue(true);
+      mockHasPhaseFailure.mockReturnValue(false);
+      mockGetProgress.mockReturnValue({ total: 1, completed: 1, failed: 0, inProgress: 0, percent: 100 });
+
+      mockUpdateTaskStatus.mockImplementation((task: Task, status: string, result?: TaskResult) => ({
+        ...task,
+        status: status as Task['status'],
+        result,
+      }));
+
+      mockAgentRun.mockReturnValue(makeSuccessResult());
+      mockAgentGetInfo.mockReturnValue(makeAgentInfo('coder'));
+
+      mockCreateDefaultAgentConfigs.mockReturnValue([
+        { role: 'coder', concurrency: 1, maxRetries: 3, timeout: 300000 },
+      ] as SubAgentConfig[]);
+
+      mockCreateAgent.mockReturnValue({
+        run: mockAgentRun,
+        getInfo: mockAgentGetInfo,
+        connectKnowledge: mockAgentConnectKnowledge,
+      });
+    }
+
+    it('should verify tests after code phase completes', () => {
+      setupCodePhasePipeline();
+      mockExecSync.mockReturnValue('All tests passed');
+
+      const engine = new PipelineEngine(defaultProject, {
+        phases: ['code'],
+        humanGates: [],
+        failFast: false,
+        maxIterations: 3,
+        autoFix: true,
+        parallel: false,
+      });
+
+      engine.run();
+
+      // execSync should have been called with jest command
+      expect(mockExecSync).toHaveBeenCalledWith(
+        expect.stringContaining('jest'),
+        expect.objectContaining({ cwd: '/tmp/test' }),
+      );
+    });
+
+    it('should rollback code changes when tests fail', () => {
+      setupCodePhasePipeline();
+      // First call (test verification) fails, second call (rollback) succeeds
+      mockExecSync
+        .mockImplementationOnce(() => { throw new Error('Tests failed'); })
+        .mockReturnValueOnce('');
+
+      const engine = new PipelineEngine(defaultProject, {
+        phases: ['code'],
+        humanGates: [],
+        failFast: false,
+        maxIterations: 3,
+        autoFix: true,
+        parallel: false,
+      });
+
+      engine.run();
+
+      // Second call should be git checkout (rollback)
+      expect(mockExecSync).toHaveBeenCalledTimes(2);
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'git checkout -- .',
+        expect.objectContaining({ cwd: '/tmp/test' }),
+      );
+    });
+
+    it('should not run safety guard for non-code phases', () => {
+      setupHappyPathMocks([makeTask({ phase: 'plan', assignedAgent: 'planner' })]);
+
+      const engine = new PipelineEngine(defaultProject, {
+        phases: ['plan'],
+        humanGates: [],
+        failFast: false,
+        maxIterations: 3,
+        autoFix: true,
+        parallel: false,
+      });
+
+      engine.run();
+
+      // execSync should NOT have been called for plan phase
+      expect(mockExecSync).not.toHaveBeenCalled();
+    });
+
+    it('should log safety guard results', () => {
+      setupCodePhasePipeline();
+      mockExecSync.mockReturnValue('All tests passed');
+
+      const engine = new PipelineEngine(defaultProject, {
+        phases: ['code'],
+        humanGates: [],
+        failFast: false,
+        maxIterations: 3,
+        autoFix: true,
+        parallel: false,
+      });
+
+      const result = engine.run();
+
+      const messages = result.logs.map((l) => l.message);
+      expect(messages.some((m) => m.includes('[SafeGuard]'))).toBe(true);
+      expect(messages.some((m) => m.includes('테스트 검증 통과'))).toBe(true);
     });
   });
 });

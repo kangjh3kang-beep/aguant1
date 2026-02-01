@@ -413,9 +413,9 @@ export class BrowserAutomation {
         const urls: string[] = [];
         const origin = new URL(base).origin;
 
-        anchors.forEach((a: any) => {
+        anchors.forEach((a: unknown) => {
           try {
-            const href = a.href;
+            const href = (a as { href: string }).href;
             if (href.startsWith(origin) && !href.includes('#') && !urls.includes(href) && href !== base) {
               urls.push(href);
             }

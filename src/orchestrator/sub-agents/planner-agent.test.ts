@@ -77,7 +77,7 @@ function mockDirEntry(name: string, isDir: boolean): MockEntry {
  */
 function setupBasicProjectMocks(): void {
   // readdirSync at project root
-  mockedFs.readdirSync.mockImplementation(((dirPath: string, _opts?: any) => {
+  (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
     const dir = String(dirPath);
     if (dir === '/project') {
       return [
@@ -94,18 +94,18 @@ function setupBasicProjectMocks(): void {
       ];
     }
     return [];
-  }) as any);
+  });
 
   // existsSync for tech stack detection
-  mockedFs.existsSync.mockImplementation(((p: string) => {
+  (mockedFs.existsSync as jest.Mock).mockImplementation((p: string) => {
     const s = String(p);
     if (s.endsWith('package.json')) return true;
     if (s.endsWith('tsconfig.json')) return true;
     return false;
-  }) as any);
+  });
 
   // readFileSync for package.json and source files
-  mockedFs.readFileSync.mockImplementation(((p: string, _enc?: string) => {
+  (mockedFs.readFileSync as jest.Mock).mockImplementation((p: string) => {
     const s = String(p);
     if (s.endsWith('package.json')) {
       return JSON.stringify({
@@ -124,20 +124,20 @@ function setupBasicProjectMocks(): void {
       return new Array(50).fill('// line').join('\n');
     }
     return '';
-  }) as any);
+  });
 }
 
 /**
  * Sets up fs mocks for an empty / unreadable project.
  */
 function setupEmptyProjectMocks(): void {
-  mockedFs.readdirSync.mockImplementation((() => {
+  (mockedFs.readdirSync as jest.Mock).mockImplementation(() => {
     throw new Error('ENOENT');
-  }) as any);
-  mockedFs.existsSync.mockReturnValue(false as any);
-  mockedFs.readFileSync.mockImplementation((() => {
+  });
+  (mockedFs.existsSync as jest.Mock).mockReturnValue(false);
+  (mockedFs.readFileSync as jest.Mock).mockImplementation(() => {
     throw new Error('ENOENT');
-  }) as any);
+  });
 }
 
 // ─── Tests ──────────────────────────────────────────────
@@ -256,7 +256,7 @@ describe('PlannerAgent', () => {
   describe('antipattern detection', () => {
     it('should detect test-to-source ratio imbalance', () => {
       // Setup: many source files, few test files
-      mockedFs.readdirSync.mockImplementation(((dirPath: string, _opts?: any) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         const dir = String(dirPath);
         if (dir === '/project') {
           return [mockDirEntry('src', true)];
@@ -266,13 +266,13 @@ describe('PlannerAgent', () => {
           return Array.from({ length: 10 }, (_, i) => mockDirEntry(`module${i}.ts`, false));
         }
         return [];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockReturnValue(false as any);
-      mockedFs.readFileSync.mockImplementation(((p: string) => {
+      (mockedFs.existsSync as jest.Mock).mockReturnValue(false);
+      (mockedFs.readFileSync as jest.Mock).mockImplementation((p: string) => {
         if (String(p).endsWith('.ts')) return new Array(50).fill('// line').join('\n');
         return '';
-      }) as any);
+      });
 
       const result = agent.run(makeTask(), '/project');
       const ratioIssue = result.issues.find(i => i.message.includes('Test-to-Source'));
@@ -280,9 +280,9 @@ describe('PlannerAgent', () => {
     });
 
     it('should detect missing tech stack when no config files exist', () => {
-      mockedFs.readdirSync.mockImplementation((() => []) as any);
-      mockedFs.existsSync.mockReturnValue(false as any);
-      mockedFs.readFileSync.mockImplementation((() => { throw new Error('ENOENT'); }) as any);
+      (mockedFs.readdirSync as jest.Mock).mockImplementation(() => []);
+      (mockedFs.existsSync as jest.Mock).mockReturnValue(false);
+      (mockedFs.readFileSync as jest.Mock).mockImplementation(() => { throw new Error('ENOENT'); });
 
       const result = agent.run(makeTask(), '/project');
       const noStackIssue = result.issues.find(i => i.message.includes('tech stack'));
@@ -294,45 +294,45 @@ describe('PlannerAgent', () => {
 
   describe('risk assessment', () => {
     it('should flag HIGH risk for projects with many dependencies (>100)', () => {
-      mockedFs.readdirSync.mockImplementation(((dirPath: string) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         if (String(dirPath) === '/project') return [mockDirEntry('package.json', false)];
         return [];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockImplementation(((p: string) => {
+      (mockedFs.existsSync as jest.Mock).mockImplementation((p: string) => {
         return String(p).endsWith('package.json');
-      }) as any);
+      });
 
       // package.json with 120 dependencies
       const deps: Record<string, string> = {};
       for (let i = 0; i < 120; i++) deps[`dep-${i}`] = '^1.0.0';
 
-      mockedFs.readFileSync.mockImplementation(((p: string) => {
+      (mockedFs.readFileSync as jest.Mock).mockImplementation((p: string) => {
         if (String(p).endsWith('package.json')) {
           return JSON.stringify({ dependencies: deps });
         }
         return '';
-      }) as any);
+      });
 
       const result = agent.run(makeTask(), '/project');
       expect(result.output).toContain('HIGH');
     });
 
     it('should flag risk for projects with no tests and many source files', () => {
-      mockedFs.readdirSync.mockImplementation(((dirPath: string) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         const dir = String(dirPath);
         if (dir === '/project') return [mockDirEntry('src', true)];
         if (dir.endsWith('/src') || dir.endsWith('\\src')) {
           return Array.from({ length: 8 }, (_, i) => mockDirEntry(`file${i}.ts`, false));
         }
         return [];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockReturnValue(false as any);
-      mockedFs.readFileSync.mockImplementation(((p: string) => {
+      (mockedFs.existsSync as jest.Mock).mockReturnValue(false);
+      (mockedFs.readFileSync as jest.Mock).mockImplementation((p: string) => {
         if (String(p).endsWith('.ts')) return new Array(50).fill('//').join('\n');
         return '';
-      }) as any);
+      });
 
       const result = agent.run(makeTask(), '/project');
       expect(result.output).toContain('HIGH');
@@ -352,14 +352,14 @@ describe('PlannerAgent', () => {
     });
 
     it('should handle unreadable individual files during large-file scan', () => {
-      mockedFs.readdirSync.mockImplementation(((dirPath: string) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         const dir = String(dirPath);
         if (dir === '/project') return [mockDirEntry('broken.ts', false)];
         return [];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockReturnValue(false as any);
-      mockedFs.readFileSync.mockImplementation((() => { throw new Error('EACCES'); }) as any);
+      (mockedFs.existsSync as jest.Mock).mockReturnValue(false);
+      (mockedFs.readFileSync as jest.Mock).mockImplementation(() => { throw new Error('EACCES'); });
 
       // Should not crash — just skip the file
       const result = agent.run(makeTask(), '/project');
@@ -367,13 +367,13 @@ describe('PlannerAgent', () => {
     });
 
     it('should handle malformed package.json gracefully', () => {
-      mockedFs.readdirSync.mockImplementation(((dirPath: string) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         if (String(dirPath) === '/project') return [mockDirEntry('package.json', false)];
         return [];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockImplementation(((p: string) => String(p).endsWith('package.json')) as any);
-      mockedFs.readFileSync.mockImplementation((() => 'NOT VALID JSON') as any);
+      (mockedFs.existsSync as jest.Mock).mockImplementation((p: string) => String(p).endsWith('package.json'));
+      (mockedFs.readFileSync as jest.Mock).mockImplementation(() => 'NOT VALID JSON');
 
       const result = agent.run(makeTask(), '/project');
       expect(result.success).toBe(true);
@@ -429,7 +429,7 @@ describe('PlannerAgent', () => {
 
   describe('edge cases', () => {
     it('should skip hidden directories and node_modules during scan', () => {
-      mockedFs.readdirSync.mockImplementation(((dirPath: string) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         if (String(dirPath) === '/project') {
           return [
             mockDirEntry('.git', true),
@@ -444,13 +444,13 @@ describe('PlannerAgent', () => {
         }
         // Should NOT be called for .git, node_modules, dist, coverage
         return [];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockReturnValue(false as any);
-      mockedFs.readFileSync.mockImplementation(((p: string) => {
+      (mockedFs.existsSync as jest.Mock).mockReturnValue(false);
+      (mockedFs.readFileSync as jest.Mock).mockImplementation((p: string) => {
         if (String(p).endsWith('.ts')) return '// line\n'.repeat(10);
         return '';
-      }) as any);
+      });
 
       const result = agent.run(makeTask(), '/project');
       expect(result.success).toBe(true);
@@ -461,14 +461,14 @@ describe('PlannerAgent', () => {
 
     it('should limit scan depth to 6 levels (no infinite recursion)', () => {
       let maxDepthReached = 0;
-      mockedFs.readdirSync.mockImplementation(((dirPath: string) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         const depth = String(dirPath).split('/').length - 2; // subtract /project base
         maxDepthReached = Math.max(maxDepthReached, depth);
         return [mockDirEntry('nested', true)];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockReturnValue(false as any);
-      mockedFs.readFileSync.mockImplementation((() => '') as any);
+      (mockedFs.existsSync as jest.Mock).mockReturnValue(false);
+      (mockedFs.readFileSync as jest.Mock).mockImplementation(() => '');
 
       const result = agent.run(makeTask(), '/project');
       expect(result.success).toBe(true);
@@ -477,18 +477,18 @@ describe('PlannerAgent', () => {
     });
 
     it('should handle project with only a package.json and no other files', () => {
-      mockedFs.readdirSync.mockImplementation(((dirPath: string) => {
+      (mockedFs.readdirSync as jest.Mock).mockImplementation((dirPath: string) => {
         if (String(dirPath) === '/project') return [mockDirEntry('package.json', false)];
         return [];
-      }) as any);
+      });
 
-      mockedFs.existsSync.mockImplementation(((p: string) => String(p).endsWith('package.json')) as any);
-      mockedFs.readFileSync.mockImplementation(((p: string) => {
+      (mockedFs.existsSync as jest.Mock).mockImplementation((p: string) => String(p).endsWith('package.json'));
+      (mockedFs.readFileSync as jest.Mock).mockImplementation((p: string) => {
         if (String(p).endsWith('package.json')) {
           return JSON.stringify({ dependencies: {}, devDependencies: {} });
         }
         return '';
-      }) as any);
+      });
 
       const result = agent.run(makeTask(), '/project');
       expect(result.success).toBe(true);

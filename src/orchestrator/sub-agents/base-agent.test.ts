@@ -234,15 +234,16 @@ describe('BaseSubAgent', () => {
       agent.throwError = 'string error' as unknown as Error;
       // The base class does String(err) on non-Error — but since we assigned a string to Error,
       // it won't be instanceof Error. Let's use a special pattern.
-      const origExecute = (agent as any).executeTask;
-      (agent as any).executeTask = () => { throw 'string error'; };
+      const agentRecord = agent as unknown as Record<string, unknown>;
+      const origExecute = agentRecord.executeTask;
+      agentRecord.executeTask = () => { throw 'string error'; };
 
       const result = agent.run(makeTask(), '/project');
       expect(result.success).toBe(false);
       expect(result.output).toContain('string error');
 
       // Restore
-      (agent as any).executeTask = origExecute;
+      agentRecord.executeTask = origExecute;
     });
   });
 

@@ -132,7 +132,7 @@ const fullPath = path.join('/a', '/b');
       const dirEntries = [
         { name: 'app.ts', isDirectory: () => false, isFile: () => true, isBlockDevice: () => false, isCharacterDevice: () => false, isFIFO: () => false, isSocket: () => false, isSymbolicLink: () => false } as fs.Dirent,
       ];
-      mockFs.readdirSync.mockReturnValue(dirEntries as any);
+      (mockFs.readdirSync as jest.Mock).mockReturnValue(dirEntries);
       mockFs.readFileSync.mockReturnValue('console.log("test");\n');
       mockFs.existsSync.mockReturnValue(true);
 
@@ -321,7 +321,7 @@ describe('PatchValidator', () => {
   });
 
   it('tsc 검증 통과', () => {
-    mockExecSync.mockReturnValue('' as any);
+    (mockExecSync as jest.Mock).mockReturnValue('');
     const result = validator.validate();
     expect(result.valid).toBe(true);
   });
@@ -329,11 +329,11 @@ describe('PatchValidator', () => {
   it('tsc 검증 실패 (TypeScript 에러)', () => {
     const tscError = new Error('tsc failed') as Error & { stdout: string };
     tscError.stdout = 'src/app.ts(10,5): error TS2345: Argument of type...\nsrc/app.ts(20,3): error TS2322: Type mismatch';
-    mockExecSync.mockImplementation((cmd: string) => {
+    (mockExecSync as jest.Mock).mockImplementation((cmd: string) => {
       if (typeof cmd === 'string' && cmd.includes('tsc')) {
         throw tscError;
       }
-      return '' as any;
+      return '';
     });
     const result = validator.validate();
     expect(result.valid).toBe(false);

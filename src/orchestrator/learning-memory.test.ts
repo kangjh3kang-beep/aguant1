@@ -18,7 +18,7 @@ describe('LearningMemory', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFs.existsSync.mockReturnValue(false);
-    mockFs.mkdirSync.mockReturnValue(undefined as any);
+    (mockFs.mkdirSync as jest.Mock).mockReturnValue(undefined);
     memory = new LearningMemory('/test/project');
   });
 
