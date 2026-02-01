@@ -298,7 +298,7 @@ export class CoderAgent extends BaseSubAgent {
    */
   private gatherContext(projectPath: string): string {
     const contextParts: string[] = [];
-    const maxContextLen = 15000;
+    const maxContextLen = 30000;
     let currentLen = 0;
 
     // package.json
@@ -317,13 +317,16 @@ export class CoderAgent extends BaseSubAgent {
       currentLen += content.length;
     }
 
-    // 소스 파일 (주요 파일 우선)
+    // 소스 파일 (주요 파일 우선 — types/interfaces 파일은 크기 제한 완화)
     const sourceFiles = this.collectSourceFiles(projectPath);
     for (const file of sourceFiles) {
       if (currentLen > maxContextLen) break;
       try {
         const content = fs.readFileSync(file, 'utf-8');
-        if (content.length > 3000) continue; // 너무 큰 파일 스킵
+        const basename = path.basename(file, path.extname(file));
+        const isKeyFile = ['types', 'interfaces', 'index', 'constants', 'config'].includes(basename);
+        const sizeLimit = isKeyFile ? 8000 : 3000;
+        if (content.length > sizeLimit) continue;
         const relPath = path.relative(projectPath, file);
         contextParts.push(`// ${relPath}\n${content}`);
         currentLen += content.length;
@@ -370,17 +373,66 @@ export class CoderAgent extends BaseSubAgent {
   }
 
   /**
+   * 프로젝트 기술 스택을 감지합니다.
+   */
+  private detectProjectStack(projectPath: string): { language: string; framework: string; linter: string; testRunner: string } {
+    const exists = (f: string) => fs.existsSync(path.join(projectPath, f));
+    let language = 'typescript';
+    let framework = 'Node.js';
+    let linter = 'ESLint';
+    let testRunner = 'Jest';
+
+    if (exists('tsconfig.json')) language = 'TypeScript';
+    else if (exists('requirements.txt') || exists('setup.py') || exists('pyproject.toml')) language = 'Python';
+    else if (exists('go.mod')) language = 'Go';
+    else if (exists('Cargo.toml')) language = 'Rust';
+    else if (exists('package.json')) language = 'JavaScript';
+
+    if (exists('package.json')) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(projectPath, 'package.json'), 'utf-8'));
+        const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+        if (deps.express) framework = 'Express';
+        else if (deps.next) framework = 'Next.js';
+        else if (deps.react) framework = 'React';
+        else if (deps.fastify) framework = 'Fastify';
+        if (deps.vitest) testRunner = 'Vitest';
+        if (deps.mocha) testRunner = 'Mocha';
+      } catch { /* ignore */ }
+    }
+
+    if (language === 'Python') { linter = 'Ruff/Flake8'; testRunner = 'pytest'; }
+    if (language === 'Go') { linter = 'golangci-lint'; testRunner = 'go test'; }
+    if (language === 'Rust') { linter = 'clippy'; testRunner = 'cargo test'; }
+
+    return { language, framework, linter, testRunner };
+  }
+
+  /**
    * 태스크에 맞는 코드 생성 프롬프트를 만듭니다.
    * PromptEnhancer를 활용하여 간단한 명령도 전문가급으로 확장합니다.
    */
   private buildCodePrompt(task: Task, projectPath: string, context: string): string {
     // ── PromptEnhancer로 시스템 프롬프트 + 사고 프레임워크 생성 ──
     const enhanced = this.enhanceTask(task);
+    const stack = this.detectProjectStack(projectPath);
 
     return `
 ${enhanced.systemPrompt}
 
 ═══════════════════════════════════════
+
+## ⚠️ CRITICAL: PROJECT TECHNOLOGY STACK (반드시 준수)
+- **Language**: ${stack.language}
+- **Framework**: ${stack.framework}
+- **Linter**: ${stack.linter}
+- **Test Runner**: ${stack.testRunner}
+
+**절대 금지 사항:**
+- ${stack.language} 이외의 언어 도구(${stack.language === 'TypeScript' ? 'Ruff, Black, pylint, flake8 등 Python 도구' : stack.language === 'Python' ? 'ESLint, tsc 등 JavaScript/TypeScript 도구' : '다른 언어 도구'}) 사용 금지
+- 프로젝트에 없는 모듈/패키지를 import하지 마세요
+- 기존 프로젝트 구조와 네이밍 컨벤션을 따르세요
+- 기존 파일의 export/import 패턴을 유지하세요
 
 ## Task
 ${task.title}
@@ -391,6 +443,8 @@ ${enhanced.enhancedDescription}
 ## Project Info
 - Path: ${projectPath}
 - Phase: ${task.phase}
+- Language: ${stack.language}
+- Framework: ${stack.framework}
 
 ## 사고 프레임워크 (Chain-of-Thought)
 ${enhanced.thinkingFramework}

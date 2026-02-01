@@ -176,9 +176,12 @@ describe('ReviewerAgent — auto-fix path', () => {
       { name: 'app.ts', isDirectory: () => false },
     ];
     fs.readdirSync.mockReturnValueOnce(mockDirEntries);
-    fs.readFileSync.mockReturnValueOnce(
-      'const x: any = 1;\nconsole.log(x);\ntry {} catch(e) {}\n',
-    );
+    // detectProjectCommands가 package.json을 먼저 읽으므로 순서 맞춤
+    fs.readFileSync
+      .mockReturnValueOnce('{}')  // package.json for detectProjectCommands
+      .mockReturnValueOnce(
+        'const x: any = 1;\nconsole.log(x);\ntry {} catch(e) {}\n',
+      );
 
     const agent = createAgent({ role: 'reviewer', concurrency: 1, maxRetries: 3, timeout: 60000 });
     const result = agent.run(
@@ -196,9 +199,12 @@ describe('ReviewerAgent — auto-fix path', () => {
       { name: 'service.ts', isDirectory: () => false },
     ];
     fs.readdirSync.mockReturnValueOnce(mockDirEntries);
-    fs.readFileSync.mockReturnValueOnce(
-      'console.log("debug");\ncatch(err) {}\n',
-    );
+    // detectProjectCommands가 package.json을 먼저 읽으므로 순서 맞춤
+    fs.readFileSync
+      .mockReturnValueOnce('{}')  // package.json for detectProjectCommands
+      .mockReturnValueOnce(
+        'console.log("debug");\ncatch(err) {}\n',
+      );
 
     const agent = createAgent({ role: 'reviewer', concurrency: 1, maxRetries: 3, timeout: 60000 });
     const result = agent.run(

@@ -158,53 +158,82 @@ export class CodeValidator {
   }
 
   /**
-   * TypeScript 컴파일 검증
+   * TypeScript 컴파일 검증 — 전체 프로젝트 컨텍스트에서 검증
+   *
+   * 격리된 파일 대신 실제 프로젝트 위치에 임시로 파일을 배치한 후
+   * 프로젝트 전체 tsc를 실행하여 import 해석 등 실제 에러를 감지합니다.
    */
   private validateTypeScript(code: string, filePath: string): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    try {
-      // 임시 파일에 코드 작성
-      const tempDir = path.join(this.projectPath, '.ag-review', '_validate');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-      const tempFile = path.join(tempDir, path.basename(filePath));
-      fs.writeFileSync(tempFile, code, 'utf-8');
+    // 대상 파일의 실제 프로젝트 경로
+    const targetPath = path.resolve(this.projectPath, filePath);
+    let originalContent: string | null = null;
+    let isNewFile = true;
 
-      // tsc --noEmit으로 타입 검사
+    try {
+      // 기존 파일이 있으면 백업
+      if (fs.existsSync(targetPath)) {
+        originalContent = fs.readFileSync(targetPath, 'utf-8');
+        isNewFile = false;
+      }
+
+      // 디렉토리가 없으면 생성
+      const dir = path.dirname(targetPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      // 생성된 코드를 실제 위치에 배치
+      fs.writeFileSync(targetPath, code, 'utf-8');
+
+      // 프로젝트 전체 tsc --noEmit 실행
       try {
-        execSync(`npx tsc --noEmit --strict --skipLibCheck "${tempFile}" 2>&1`, {
+        execSync('npx tsc --noEmit 2>&1', {
           cwd: this.projectPath,
           encoding: 'utf-8',
-          timeout: 30000,
+          timeout: 60000,
           stdio: 'pipe',
         });
       } catch (err: unknown) {
         const errOutput = err instanceof Error && 'stdout' in err ? (err as { stdout: string }).stdout : String(err);
-        const tscErrors = errOutput.split('\n').filter((l) => /error TS\d+/.test(l));
-        if (tscErrors.length > 0) {
-          for (const e of tscErrors.slice(0, 5)) {
-            errors.push(e.trim());
+        const allTscErrors = errOutput.split('\n').filter((l) => /error TS\d+/.test(l));
+
+        if (allTscErrors.length > 0) {
+          // 생성된 파일 관련 에러만 필터링
+          const fileErrors = allTscErrors.filter((l) =>
+            l.includes(filePath) || l.includes(path.basename(filePath))
+          );
+          if (fileErrors.length > 0) {
+            for (const e of fileErrors.slice(0, 10)) {
+              errors.push(e.trim());
+            }
+          } else {
+            // 다른 파일의 기존 에러는 경고로 처리
+            warnings.push(`프로젝트에 기존 TypeScript 에러 ${allTscErrors.length}건 있음 (생성 코드 외)`);
           }
         } else {
           // tsc가 아닌 다른 오류(경로 문제 등)는 경고로 처리
           warnings.push('TypeScript 컴파일 검증을 수행할 수 없음 (tsc 미설치 또는 경로 문제)');
         }
       }
-
-      // 임시 파일 정리
-      try {
-        fs.unlinkSync(tempFile);
-      } catch (err: unknown) {
-        if (process.env.AG_DEBUG) {
-          console.debug('[CodeValidator] temp file cleanup failure:', err instanceof Error ? err.message : String(err));
-        }
-      }
     } catch (err: unknown) {
       warnings.push('TypeScript 검증 환경 설정 실패');
       if (process.env.AG_DEBUG) { console.debug('[CodeGenV2] TS validation setup error:', err instanceof Error ? err.message : String(err)); }
+    } finally {
+      // 원본 복원 또는 새 파일 삭제
+      try {
+        if (isNewFile) {
+          if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+        } else if (originalContent !== null) {
+          fs.writeFileSync(targetPath, originalContent, 'utf-8');
+        }
+      } catch (err: unknown) {
+        if (process.env.AG_DEBUG) {
+          console.debug('[CodeValidator] file restore failure:', err instanceof Error ? err.message : String(err));
+        }
+      }
     }
 
     return {

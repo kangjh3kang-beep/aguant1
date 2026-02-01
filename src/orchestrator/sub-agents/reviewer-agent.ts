@@ -81,6 +81,9 @@ export class ReviewerAgent extends BaseSubAgent {
     enhancedOutputs.push(`[REVIEWER] 품질 체크리스트: ${enhanced.qualityChecklist.length}개 항목`);
     enhancedOutputs.push('');
 
+    // 프로젝트별 커맨드 자동 감지
+    const commands = this.detectProjectCommands(projectPath);
+
     // 기존 CodeReviewAgent 사용 (컴파일·린트·테스트)
     const agent = new CodeReviewAgent({
       projectPath,
@@ -88,6 +91,7 @@ export class ReviewerAgent extends BaseSubAgent {
       verbose: false,
       autoFix: true,
       failFast: false,
+      ...commands,
     });
 
     const report = agent.run();
@@ -189,6 +193,47 @@ export class ReviewerAgent extends BaseSubAgent {
       issues,
       duration: report.duration,
     };
+  }
+
+  /**
+   * 프로젝트별 컴파일/린트/테스트 커맨드를 자동 감지합니다.
+   */
+  private detectProjectCommands(projectPath: string): {
+    compileCommand?: string;
+    lintCommand?: string;
+    testCommand?: string;
+  } {
+    const commands: { compileCommand?: string; lintCommand?: string; testCommand?: string } = {};
+    const pkgPath = path.join(projectPath, 'package.json');
+    if (!fs.existsSync(pkgPath)) return commands;
+
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+      const scripts = pkg.scripts ?? {};
+
+      // 컴파일 커맨드
+      if (deps.typescript || fs.existsSync(path.join(projectPath, 'tsconfig.json'))) {
+        commands.compileCommand = deps.next ? 'npx next build --no-lint' : 'npx tsc --noEmit';
+      }
+
+      // 린트 커맨드
+      if (scripts.lint) {
+        commands.lintCommand = `npm run lint -- --format json 2>&1 || true`;
+      } else if (deps.eslint) {
+        const ext = deps.react ? '{ts,tsx}' : 'ts';
+        commands.lintCommand = `npx eslint "src/**/*.${ext}" --format json`;
+      }
+
+      // 테스트 커맨드
+      if (deps.vitest) {
+        commands.testCommand = 'npx vitest run --reporter=json';
+      } else if (deps.jest) {
+        commands.testCommand = 'npx jest --json --no-coverage';
+      }
+    } catch { /* ignore parse errors */ }
+
+    return commands;
   }
 
   /**
